@@ -13,6 +13,9 @@ public class Configuration : IPluginConfiguration
 
     public bool UseFurtherCameraForLargerMounts { get; set; } = true;
 
+    public bool RealFirstPerson { get; set; } = true;
+    public bool ThirdPersonControl { get; set; } = true;
+
     // Version for migrations
     public int Version { get; set; } = 1;
 

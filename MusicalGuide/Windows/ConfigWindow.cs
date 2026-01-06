@@ -84,7 +84,7 @@ public class ConfigWindow : Window, IDisposable
                 if (ImGui.SliderFloat(name, ref dist, MinDist, MaxDist, "%.1f"))
                 {
                     configuration.SetManualDistance(val, dist);
-                    cam.SetDistance(dist);
+                    cam.SetTargetDistance(dist);
                 }
             }
 

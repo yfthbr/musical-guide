@@ -1,94 +1,175 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Dalamud.Game.ClientState.Objects.Enums;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 
 namespace MusicalGuide;
 
-public class CamController(Configuration configuration)
+public class CamController : IDisposable
 {
+    #region Constants
+    // Maximum allowed camera zoom in the normal game
     private const float MaxDist = 20f;
+
+    // Minimum allowed camera zoom in the normal game
     private const float MinDist = 1.5f;
-    private int persistentRetryId;
+
+    // Maximum distance change per delay tick
     private const float MaxDiff = 0.5f;
 
-    public static unsafe float Distance => Cam()->Distance;
+    // Delay between distance updates in milliseconds. Target 60fps adjustments.
+    // Lower fps will result in slower camera adjustments, which is intentional to avoid choppiness.
+    private const int DelayMs = 16;
+    #endregion
 
-    public void SetDistance(float distance)
+    #region Dynamic Camera Accessors
+    public static unsafe float CurrentDistance
     {
-        if (!configuration.Enabled)
-        {
-            return;
-        }
-        S.Framework.RunOnFrameworkThread(() =>
-        {
-            InternalSetDistance(distance);
-        });
+        get { return Cam->Distance; }
+        set { Cam->Distance = value; }
     }
 
-    private unsafe void InternalSetDistance(float distance, int retry = 0, int retryId = 0)
-    {
-        if (distance < MinDist) distance = MinDist;
-        if (distance > MaxDist) distance = MaxDist;
+    // TODO: use clientstructs for this when the field is added upstream
+    private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
+    public static unsafe bool InFirstPerson => Marshal.ReadInt32((nint)Cam + 0x180) == 0;
+    #endregion
 
-        S.Log.Debug($"InternalSetDistance({distance}, {retry}, {retryId})");
+    #region Volatile State
+    private volatile bool isDisposed = false;
+    private volatile float targetDistance = MaxDist;
+    #endregion
+
+    #region Class Lifetime
+    private readonly Configuration configuration;
+
+    public CamController(Configuration configuration)
+    {
+        this.configuration = configuration;
+
+        // TODO: hook ShouldDrawGameObject to show player model in first person when configuration is set
+    }
+
+    public void Dispose()
+    {
+        isDisposed = true;
+    }
+    #endregion
+
+    #region Public Methods
+    public void Start()
+    {
+        S.Framework.RunOnFrameworkThread(() => ProcessTick());
+    }
+
+    public void SetTargetDistance(float distance)
+    {
+        targetDistance = ClampCameraDistance(distance);
+    }
+    #endregion
+
+    #region Internal Processing
+    private void ProcessTick()
+    {
+        if (isDisposed) return;
+
+        ProcessTickInternal();
+
+        S.Framework.RunOnTick(ProcessTick, TimeSpan.FromMilliseconds(DelayMs));
+    }
+
+    private void ProcessTickInternal()
+    {
+        if (!configuration.Enabled) return;
+        if (!S.ClientState.IsLoggedIn) return;
+
         if (!S.Framework.IsInFrameworkUpdateThread)
         {
             S.Log.Error("CamController not in framework update thread.");
             return;
         }
 
-        if (retry > 0 && persistentRetryId != retryId)
+        if (S.ObjectTable.LocalPlayer == null) return;
+        if (!S.ObjectTable.LocalPlayer.IsValid()) return;
+
+        if (InFirstPerson)
+            UpdateFirstPersonCamera();
+        else
+            SetThirdPersonDistance();
+    }
+    #endregion
+
+    #region First Person Handling
+    private void UpdateFirstPersonCamera()
+    {
+        if (!configuration.RealFirstPerson) return;
+
+        // Rough plan:
+        // 1. Get bone position (id 1? 26?)
+        // 2. Update camera target position+rotation to that bone position + some offset (cam should be slightly in front of the face)
+        // 3. Tick camera position+rotation towards target position+rotation smoothly but quickly
+
+        // Note: floating point precision, use Abs with a small epsilon
+    }
+    #endregion
+
+    #region Third Person Handling
+    private void SetThirdPersonDistance()
+    {
+        if (!configuration.ThirdPersonControl) return;
+
+        var distance = MountHitboxAdjustedDistance(targetDistance);
+
+        if (CameraIsAtDistance(distance)) return;
+
+        // Important! Clamp distance to allowed range before any adjustments are made
+        distance = ClampCameraDistance(distance);
+
+        AdjustCameraDistanceTowards(distance);
+    }
+
+    private bool CameraIsAtDistance(float distance) => Math.Abs(CurrentDistance - distance) < 0.01f;
+
+    private float MountHitboxAdjustedDistance(float baseDistance)
+    {
+        if (!configuration.UseFurtherCameraForLargerMounts) return baseDistance;
+
+        try
         {
-            S.Log.Info("Waiting for mount cancelled");
-            return;
+            var hitboxSize = MountHitboxSize();
+            S.Log.Debug($"Mount hitbox size: {hitboxSize}");
+            return MathF.Max(MinDist, MathF.Min(MaxDist, ((hitboxSize - 1f) * 2) + baseDistance));
         }
-
-        // Intent here is for new calls to cancel ongoing recursion, so verifying retryId and generating a new one
-        // that the recursion on the next tick can use to verify no overriding call arrived in between the ticks.
-        // This should fix a race condition when entering and exiting states very quickly (ex. sub-second combat scenarios)
-        if (retryId != 0 && retryId != persistentRetryId) return;
-        retryId = persistentRetryId = Random.Shared.Next(int.MaxValue);
-
-        if (configuration.UseFurtherCameraForLargerMounts)
+        catch (NotReadyException)
         {
-            try
-            {
-                var hitboxSize = MountHitboxSize();
-                S.Log.Debug($"Mount hitbox size: {hitboxSize}");
-                distance = MathF.Max(MinDist, MathF.Min(MaxDist, ((hitboxSize - 1f) * 2) + distance));
-            }
-            catch (NotReadyException)
-            {
-                if (retry > 3)
-                {
-                    S.Log.Info("Did not find mount in time");
-                    return;
-                }
-                S.Framework.RunOnTick(() =>
-                {
-                    InternalSetDistance(distance, retry + 1, retryId);
-                }, TimeSpan.FromMilliseconds(400));
-                return;
-            }
+            S.Log.Debug("Mount hitbox size not ready, using base distance.");
+            return baseDistance;
         }
+    }
 
-        var currentDistance = Cam()->Distance;
-        if (Math.Abs(currentDistance - distance) > MaxDiff)
+    private void AdjustCameraDistanceTowards(float distance)
+    {
+        if (Math.Abs(CurrentDistance - distance) > MaxDiff)
         {
-            S.Framework.RunOnTick(() => { InternalSetDistance(distance, 0, retryId); }, TimeSpan.FromMilliseconds(1));
             var diff = MaxDiff;
-            if (currentDistance > distance) diff *= -1;
-            var newDist = currentDistance + diff;
-            S.Log.Debug($"Setting distance to {newDist}");
-            Cam()->Distance = newDist;
+            if (CurrentDistance > distance) diff *= -1;
+            var newDist = CurrentDistance + diff;
+            S.Log.Debug($"Setting distance to {newDist}, target was {distance} ({targetDistance} before hitbox adjustments)");
+            CurrentDistance = newDist;
         }
         else
         {
-            S.Log.Debug($"Setting distance to {distance}");
-            Cam()->Distance = distance;
+            S.Log.Debug($"Setting distance to {distance}, target was {distance} ({targetDistance} before hitbox adjustments)");
+            CurrentDistance = distance;
         }
+    }
+
+    private static float ClampCameraDistance(float distance)
+    {
+        if (distance < MinDist) distance = MinDist;
+        if (distance > MaxDist) distance = MaxDist;
+        return distance;
     }
 
     private static float MountHitboxSize()
@@ -111,11 +192,7 @@ public class CamController(Configuration configuration)
             throw new NotReadyException();
         }
     }
-
-    private static unsafe Camera* Cam()
-    {
-        return CameraManager.Instance()->GetActiveCamera();
-    }
+    #endregion
 }
 
 internal class NotReadyException : Exception

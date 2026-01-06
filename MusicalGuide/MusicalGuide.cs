@@ -38,6 +38,8 @@ public sealed partial class MusicalGuide : IDalamudPlugin
         S.PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
 
         S.Framework.Update += FrameworkOnUpdateEvent;
+
+        Cam.Start();
     }
 
     private State LatestState { get; set; }
@@ -48,6 +50,8 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
     public void Dispose()
     {
+        Cam.Dispose();
+
         S.Framework.Update -= FrameworkOnUpdateEvent;
 
         WindowSystem.RemoveAllWindows();
@@ -79,13 +83,13 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
         if (newState != LatestState)
         {
-            var currentDistance = CamController.Distance;
+            var currentDistance = CamController.CurrentDistance;
             S.Log.Debug($"State changed to: {newState}. Current distance: {currentDistance}.");
             Configuration.SetAutomatedDistance(LatestState, currentDistance);
             if (Configuration.Distances.TryGetValue(newState, out var newDistance))
             {
                 S.Log.Debug($"Setting new distance to: {newDistance}.");
-                Cam.SetDistance(newDistance);
+                Cam.SetTargetDistance(newDistance);
             }
 
             LatestState = newState;
