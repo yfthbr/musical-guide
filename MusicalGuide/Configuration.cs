@@ -7,6 +7,7 @@ namespace MusicalGuide;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
+    public event Action? OnConfigurationChanged;
     public bool Enabled { get; set; } = true;
 
     public bool UseAutomaticDistance { get; set; } = true;
@@ -14,6 +15,8 @@ public class Configuration : IPluginConfiguration
     public bool UseFurtherCameraForLargerMounts { get; set; } = true;
 
     public bool RealFirstPerson { get; set; } = true;
+    public float FirstPersonHeadOffset { get; set; } = 0.03f;
+    public int FirstPersonFieldOfView { get; set; } = 90;
     public bool ThirdPersonControl { get; set; } = true;
 
     // Version for migrations
@@ -37,5 +40,6 @@ public class Configuration : IPluginConfiguration
     public void Save()
     {
         S.PluginInterface.SavePluginConfig(this);
+        OnConfigurationChanged?.Invoke();
     }
 }
