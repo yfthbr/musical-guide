@@ -28,13 +28,14 @@ public class CamController : IDisposable
     // Lower fps will result in slower camera adjustments, which is intentional to avoid choppiness.
     private const int DelayMs = 16;
 
-    private const float DirHMin = -90 * MathF.PI / 180f;
-    private const float DirHMax = 90 * MathF.PI / 180f;
+    private const int DirVMaxDeg = 100;
+    private const int DirHMaxDeg = 90;
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
     private const float DirVEpsilon = 0.003f; // Small value to avoid an issue with the game flipping camera when looking straight up/down
     private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
+    private const float EulerLargeChangeThreshold = 1f;
     private const int BoneIndex = 33; // j_f_uhana
 
     private const int HeadSkeletonIndex = 1;
@@ -72,6 +73,7 @@ public class CamController : IDisposable
 
     #region FirstPersonState
     private volatile bool previousTickWasFirstPerson = false;
+    private DateTime pauseFpUntil = DateTime.MinValue;
     private Vector3 previousHeadEuler = new();
     private float previousDirV = 0f;
     #endregion
@@ -200,9 +202,10 @@ public class CamController : IDisposable
             return false;
         }
 
-        previousDirV = Cam->DirV;
-
-        Cam->DirV = Cam->DirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
+        if (DateTime.Now < pauseFpUntil)
+        {
+            return true;
+        }
 
         // Rough plan:
         // 1. Get bone position
@@ -234,42 +237,48 @@ public class CamController : IDisposable
         // Apply pitch offset
         boneEuler.Z -= configuration.FirstPersonHeadRotationPitch * (MathF.PI / 180f);
 
+        var deltaEuler = boneEuler - previousHeadEuler;
+        if (deltaEuler.Magnitude > EulerLargeChangeThreshold)
+        {
+            if (pauseFpUntil != DateTime.MinValue)
+            {
+                // Large change, likely a teleport or cutscene adjustment. Ignore deltas for a few ticks to avoid camera snapping.
+                S.Log.Debug($"Large head rotation change detected: {deltaEuler.Magnitude}, ignoring for a few ticks.");
+                pauseFpUntil = DateTime.Now.AddMilliseconds(100);
+                return true;
+            }
+            else
+            {
+                S.Log.Debug($"Large head rotation change detected: {deltaEuler.Magnitude}, but already paused, resuming normal operation.");
+                pauseFpUntil = DateTime.MinValue;
+            }
+        }
+
+        // Begin adjusting camera rotation
+
+        previousDirV = Cam->DirV;
+
+        Cam->DirV = Cam->DirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
+
         // Apply tilt to camera
         CameraTilt = boneEuler.X;
 
         // Determine DirV and DirH limits
-        var targetDirV = boneEuler.Z % (2 * MathF.PI);
-        if (targetDirV > MathF.PI)
-            targetDirV -= 2 * MathF.PI;
-        else if (targetDirV < -MathF.PI)
-            targetDirV += 2 * MathF.PI;
-        var dirvMin = (targetDirV - (100 * (MathF.PI / 180f))) % (2 * MathF.PI);
-        var dirvMax = (targetDirV + (100 * (MathF.PI / 180f))) % (2 * MathF.PI);
-        if (dirvMax < dirvMin) dirvMin -= 2 * MathF.PI;
-        if (dirvMax >= MathF.PI)
-        {
-            dirvMax -= 2 * MathF.PI;
-        }
+        float dirvMin, dirvMax;
+        CalculateDirectionRange(boneEuler.Z, DirVMaxDeg, out dirvMin, out dirvMax);
+        float dirhMin, dirhMax;
+        CalculateDirectionRange(boneEuler.Y + MathF.PI, DirHMaxDeg, out dirhMin, out dirhMax);
 
-        var dirhMin = DirHMin;
-        var dirhMax = DirHMax;
-        // Upside down
-        if (boneEuler.Y > 0)
-        {
-            // This only works because DirHMin and DirHMax are symmetric at 90deg each
-            dirhMin = DirHMax;
-            dirhMax = DirHMin;
-        }
-
+        float? dirHAntiClockwise = null;
         if (previousTickWasFirstPerson)
         {
             // Apply rotation delta to camera
-            var deltaEuler = boneEuler - previousHeadEuler;
 
             // Yaw (Y axis) affects camera DirH
             if (Math.Abs(deltaEuler.Y) > EulerEpsilon)
             {
-                Cam->DirH += deltaEuler.Y;
+                dirHAntiClockwise = Cam->DirH - deltaEuler.Y;
+                Cam->DirH = Cam->DirH + deltaEuler.Y;
                 previousHeadEuler.Y = boneEuler.Y;
             }
 
@@ -310,34 +319,18 @@ public class CamController : IDisposable
         if (Math.Abs(Cam->DirV) > straightUp)
         {
             CameraTilt += (float)Math.PI; // flip camera when looking past straight up or down
-
-            // // Swap DirV and DirH to keep horizontal mouse control correct
-            // // 1. Mirror DirV around directly up/down
-            // // 2. Rotate DirH by 180 degrees
-            // if (Cam->DirV > 0)
-            // {
-            //     Cam->DirV -= 2 * (Cam->DirV - straightUp);
-            // }
-            // else
-            // {
-            //     Cam->DirV += 2 * (straightDown - Cam->DirV);
-            // }
-            // Cam->DirH = (Cam->DirH + MathF.PI) % (2 * MathF.PI);
-
-            // // This only works because DirHMin and DirHMax are symmetric at 90deg each
-            // dirhMin = -DirHMin;
-            // dirhMax = -DirHMax;
-
-            // S.Log.Debug("AAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            if (dirHAntiClockwise.HasValue)
+            {
+                // Invert DirH when upside down
+                Cam->DirH = dirHAntiClockwise.Value;
+            }
         }
 
-        // S.Log.Debug($"Cam DirV: {Cam->DirV:F3}, Min: {dirvMin:F3}, Max: {dirvMax:F3}\n               Cam DirH: {Cam->DirH:F3}, Min: {dirhMin:F3}, Max: {dirhMax:F3}");
+        // S.Log.Debug($"Camera DirH: {Cam->DirH}, DirV: {Cam->DirV} - {targetDirV} / {dirvMin} to {dirvMax}, Tilt: {CameraTilt}, Bone Euler: {boneEuler}");
 
         // Clamp DirV and DirH to be within target range
         Cam->DirV = ClampRotational(Cam->DirV, dirvMin, dirvMax);
         Cam->DirH = ClampRotational(Cam->DirH, dirhMin, dirhMax);
-
-        // S.Log.Debug($"Camera DirH: {Cam->DirH}, DirV: {Cam->DirV} - {targetDirV} / {dirvMin} to {dirvMax}, Tilt: {CameraTilt}, Bone Euler: {boneEuler}");
 
         // Apply FOV
         Cam->FoV = configuration.FirstPersonFieldOfView / 100f;
@@ -347,14 +340,51 @@ public class CamController : IDisposable
 
         var nextCameraPosition = (Vector3)S.ObjectTable.LocalPlayer!.Position + boneModelPos;
 
+        // Account for draw offsets (e.g. SimpleHeels)
+        var playerGameObject = (GameObject*)S.ObjectTable.LocalPlayer!.Address;
+        nextCameraPosition += playerGameObject->DrawOffset;
+        nextCameraPosition += new Vector3(0, -0.1f, 0); // small downward offset to place camera better in front of face
+
         // In first person with RealFirstPerson enabled, override position
         *position = nextCameraPosition;
 
         return true;
     }
 
+    private static void CalculateDirectionRange(float rootRotation, int degrees, out float dirMin, out float dirMax)
+    {
+        var targetDir = rootRotation % (2 * MathF.PI);
+        if (targetDir > MathF.PI)
+            targetDir -= 2 * MathF.PI;
+        else if (targetDir < -MathF.PI)
+            targetDir += 2 * MathF.PI;
+        dirMin = (targetDir - (degrees * (MathF.PI / 180f))) % (2 * MathF.PI);
+        dirMax = (targetDir + (degrees * (MathF.PI / 180f))) % (2 * MathF.PI);
+        if (dirMax < dirMin)
+        {
+            if (dirMin <= MathF.PI)
+                dirMax += 2 * MathF.PI;
+            else
+                dirMin -= 2 * MathF.PI;
+        }
+        // Floating point imprecision in targetDirV can cause min/max to be out of range, fix that here
+        if (dirMin <= -MathF.PI)
+        {
+            dirMin += 2 * MathF.PI;
+            dirMax += 2 * MathF.PI;
+        }
+        // If max is too far out, wrap it back
+        if (dirMax >= MathF.PI)
+        {
+            dirMax -= 2 * MathF.PI;
+        }
+    }
+
     private float ClampRotational(float input, float min, float max)
     {
+#if DEBUG
+        var _input = input;
+#endif
         // Clamp input to be within target range
         if (input > max && input < min) // between min and max, choose closest
         {
@@ -372,6 +402,10 @@ public class CamController : IDisposable
             else if (input > max) // above max
                 input = max;
         }
+#if DEBUG
+        if (input != _input)
+            S.Log.Verbose($"Clamped rotational from {_input} to {input} within {min} to {max}");
+#endif
         return input;
     }
 
@@ -392,15 +426,6 @@ public class CamController : IDisposable
 
     private unsafe FFXIVClientStructs.Havok.Animation.Rig.hkaPose* GetHavokPose(FFXIVClientStructs.FFXIV.Client.Graphics.Render.PartialSkeleton* partialSkeleton)
     {
-        // for (int i = 1; i > 0; i--)
-        // {
-        //     var havokPose = partialSkeleton->GetHavokPose(i);
-        //     var boneTransform = havokPose->AccessBoneModelSpace(BoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.Propagate)->Translation.X;
-        //     if (!float.IsNaN(boneTransform))
-        //     {
-        //         return havokPose;
-        //     }
-        // }
         return partialSkeleton->GetHavokPose(0);
     }
 
