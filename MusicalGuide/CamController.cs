@@ -28,7 +28,8 @@ public class CamController : IDisposable
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
-    private const float DirVEpsilon = 0.0001f;
+    private const float DirVEpsilon = 0.003f; // Small value to avoid an issue with the game flipping camera when looking straight up/down
+    private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
     #endregion
 
     #region Dynamic Camera Accessors
@@ -195,24 +196,27 @@ public class CamController : IDisposable
         Cam->DirVMin = -179 * (MathF.PI / 180f);
         Cam->DirVMax = 179 * (MathF.PI / 180f);
 
-        while (Math.Abs(Cam->DirV - (Math.PI / 2)) < DirVEpsilon)
+        // These are slightly off 90 degrees as the game does camera flip slightly earlier than that.
+        var straightUp = 90 * MathF.PI / 180f;
+        var straightDown = -90 * MathF.PI / 180f;
+
+        // Jump over the singularity at straight up/down
+        if (Math.Abs(Cam->DirV - straightUp) < DirVEpsilon || Math.Abs(Cam->DirV - straightDown) < DirVEpsilon)
         {
             if (previousDirV < Cam->DirV)
-                Cam->DirV += DirVEpsilon;
+                Cam->DirV += DirVEpsilon * 2;
             else if (previousDirV > Cam->DirV)
-                Cam->DirV -= DirVEpsilon;
-            else
-                break;
+                Cam->DirV -= DirVEpsilon * 2;
         }
 
-        if (Math.Abs(Cam->DirV) >= MathF.PI / 2 - float.Epsilon)
+        if (Math.Abs(Cam->DirV) > straightUp)
             CameraTilt = (float)Math.PI; // flip camera when looking past straight up or down
         else
             CameraTilt = 0;
 
         previousDirV = Cam->DirV;
 
-        S.Log.Debug($"First person camera DirV: {Cam->DirV}, Tilt: {CameraTilt}, IsFlipped: {IsCameraFlipped}");
+        S.Log.Debug($"First person camera DirV: {Cam->DirV}, {Cam->DirH}, Tilt: {CameraTilt}");
 
         // Rough plan:
         // 1. Get bone position
@@ -251,15 +255,22 @@ public class CamController : IDisposable
             var deltaEuler = boneEuler - previousHeadEuler;
 
             // Yaw (Y axis) affects camera DirH
-            Cam->DirH += deltaEuler.Y;
+            if (Math.Abs(deltaEuler.Y) > EulerEpsilon)
+            {
+                Cam->DirH += deltaEuler.Y;
+                previousHeadEuler.Y = boneEuler.Y;
+            }
 
-            // Pitch (X axis) affects camera DirV
-            Cam->DirV += Math.Clamp(deltaEuler.X, Cam->DirVMin, Cam->DirVMax);
-
-            previousHeadEuler = boneEuler;
+            // Pitch (Z axis) affects camera DirV
+            if (Math.Abs(deltaEuler.Z) > EulerEpsilon)
+            {
+                Cam->DirV += Math.Clamp(deltaEuler.Z, Cam->DirVMin, Cam->DirVMax);
+                previousHeadEuler.Z = boneEuler.Z;
+            }
         }
         else
         {
+            //Cam->DirH += 90 * (MathF.PI / 180f); // adjust for model facing direction
             previousTickWasFirstPerson = true;
         }
 
@@ -281,13 +292,11 @@ public class CamController : IDisposable
     }
 
     // Convert quaternion -> radians.
+    // X = tilting sideways
+    // Y = turning left/right
+    // Z = rolling forward/backward
     private static Vector3 QuaternionToEuler(Quaternion q)
     {
-        // In FFXIV (Y-Up):
-        // Pitch = X Axis (Looking up/down)
-        // Yaw   = Y Axis (Heading/Turning)
-        // Roll  = Z Axis (Bank)
-
         // We use a rotation sequence that ensures the singularity is on X (Pitch).
         // This allows Y (Yaw) to spin 360 degrees without locking.
 
