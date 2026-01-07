@@ -83,7 +83,8 @@ public class CamController : IDisposable
 
     // Verify at: 48 8B C4 44 88 48 ?? 55 56
     private unsafe delegate void GetCameraPositionDelegate(Camera* camera, GameObject* target, Vector3* position, byte swapPerson);
-    private Hook<GetCameraPositionDelegate>? getCameraPositionHook;
+    private readonly Hook<GetCameraPositionDelegate>? getCameraPositionHook;
+    private readonly Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
 
     public CamController(Configuration configuration)
     {
@@ -96,7 +97,9 @@ public class CamController : IDisposable
             var camVTable = Marshal.ReadIntPtr((nint)Cam);
             var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
             getCameraPositionHook = S.Interop.HookFromAddress<GetCameraPositionDelegate>(GetCameraPositionAddress, GetCameraPositionDetour);
+            shouldDrawGameObjectHook = S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
             getCameraPositionHook.Enable();
+            shouldDrawGameObjectHook.Enable();
 
             S.Log.Debug($"Current camera limits: Min={Cam->DirVMin}, Max={Cam->DirVMax}, FoV={Cam->FoV}");
         }
@@ -112,7 +115,9 @@ public class CamController : IDisposable
     public void Dispose()
     {
         getCameraPositionHook?.Disable();
+        shouldDrawGameObjectHook?.Disable();
         getCameraPositionHook?.Dispose();
+        shouldDrawGameObjectHook?.Dispose();
 
         unsafe
         {
@@ -175,6 +180,18 @@ public class CamController : IDisposable
     private void UpdateFirstPersonCamera()
     {
         if (!configuration.RealFirstPerson) return;
+    }
+
+    private unsafe bool ShouldDrawGameObjectDetour(CameraBase* thisPtr, GameObject* gameObject, Vector3* sceneCameraPos, Vector3* lookAtVector)
+    {
+        // Force draw all player and companion in first person with RealFirstPerson enabled
+        var firstPersonModificationActive = configuration.RealFirstPerson && InFirstPerson;
+        var isLocalPlayerOrCompanion = (nint)gameObject == S.ObjectTable.LocalPlayer?.Address || (nint)gameObject == S.ObjectTable[1]?.Address;
+        if (firstPersonModificationActive && isLocalPlayerOrCompanion)
+        {
+            return true;
+        }
+        return shouldDrawGameObjectHook!.Original(thisPtr, gameObject, sceneCameraPos, lookAtVector);
     }
 
     private unsafe void GetCameraPositionDetour(Camera* camera, GameObject* target, Vector3* position, byte swapPerson)
