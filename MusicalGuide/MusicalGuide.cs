@@ -106,7 +106,7 @@ public sealed partial class MusicalGuide : IDalamudPlugin
     {
         if (args == "debug")
         {
-            S.Framework.RunOnFrameworkThread(Debug.PrintDebug);
+            S.Framework.RunOnFrameworkThread(() => Debug.PrintDebug(Configuration));
             return;
         }
         ToggleConfigUi();

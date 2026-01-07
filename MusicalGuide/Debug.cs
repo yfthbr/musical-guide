@@ -1,3 +1,6 @@
+using System.Runtime.InteropServices;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
+using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Common.Math;
 
@@ -5,7 +8,7 @@ namespace MusicalGuide;
 
 unsafe static class Debug
 {
-    public static void PrintDebug()
+    public static void PrintDebug(Configuration configuration)
     {
         const int HEAD_SKELETON_INDEX = 1;
         const int BONE_INDEX = 33; // j_f_uhana
@@ -19,7 +22,7 @@ unsafe static class Debug
             return;
         var partialSkeleton = &skeleton->PartialSkeletons[HEAD_SKELETON_INDEX];
 
-        for (int POSE_INDEX = 0; POSE_INDEX <= 0; POSE_INDEX++)
+        for (int POSE_INDEX = 0; POSE_INDEX <= 3; POSE_INDEX++)
         {
             var havokPose = partialSkeleton->GetHavokPose(POSE_INDEX);
             if (havokPose == null)
@@ -31,8 +34,11 @@ unsafe static class Debug
             var boneQuaternion = CamController.QuaternionFromHkQuaternion(boneTransform->Rotation);
             var boneEuler = boneQuaternion.ToEuler();
 
-            S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String} Rotation: {boneEuler}, Position: {boneModelPos}");
+            var transformedPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+
+            S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String} Rotation: {boneEuler}, Position: {boneModelPos} -> Transformed Position: {transformedPos} - Character Rotation: {charaBase->Rotation}");
         }
-        S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation}");
+        S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation} - CameraTilt {CamController.CameraTilt}");
+        S.Log.Info($"Status: IsSeated: {Marshal.ReadByte((nint)(&((Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20)}");
     }
 }

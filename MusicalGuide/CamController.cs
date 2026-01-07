@@ -280,10 +280,8 @@ public class CamController : IDisposable
         Cam->DirV = Cam->DirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
 
         // Determine DirV and DirH limits
-        float dirvMin, dirvMax;
-        CalculateDirectionRange(boneEuler.Z, DirVMaxDeg, out dirvMin, out dirvMax);
-        float dirhMin, dirhMax;
-        CalculateDirectionRange(trueFacing, DirHMaxDeg, out dirhMin, out dirhMax);
+        CalculateDirectionRange(boneEuler.Z, DirVMaxDeg, out var dirvMin, out var dirvMax);
+        CalculateDirectionRange(trueFacing, DirHMaxDeg, out var dirhMin, out var dirhMax);
 
         if (previousTickWasFirstPerson)
         {
@@ -340,7 +338,6 @@ public class CamController : IDisposable
             CameraTilt += (float)Math.PI; // flip camera when looking past straight up or down
         }
 
-
         // Clamp DirV and DirH to be within target range
         Cam->DirV = ClampRotational(Cam->DirV, dirvMin, dirvMax);
         Cam->DirH = ClampRotational(Cam->DirH, dirhMin, dirhMax);
@@ -349,7 +346,16 @@ public class CamController : IDisposable
         Cam->FoV = configuration.FirstPersonFieldOfView / 100f;
 
         // Rotate boneModelPos by the character's world rotation
-        boneModelPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+        if (PlayerIsSeated())
+        {
+            // If seated/anchored, rotation only applies to our configured offset
+            boneModelPos += Vector3.Transform(configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+        }
+        else
+        {
+            // If free moving or using emotes in free space, apply rotation to entire position
+            boneModelPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+        }
 
         var nextCameraPosition = (Vector3)S.ObjectTable.LocalPlayer!.Position + boneModelPos;
 
@@ -361,6 +367,12 @@ public class CamController : IDisposable
         *position = nextCameraPosition;
 
         return true;
+    }
+
+    public unsafe static bool PlayerIsSeated()
+    {
+        var poseType = (EmoteController.PoseType)Marshal.ReadByte((nint)(&((FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20);
+        return poseType == EmoteController.PoseType.Sit;
     }
 
     private static void CalculateDirectionRange(float rootRotation, int degrees, out float dirMin, out float dirMax)
