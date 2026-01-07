@@ -15,9 +15,15 @@ public class Configuration : IPluginConfiguration
     public bool UseFurtherCameraForLargerMounts { get; set; } = true;
 
     public bool RealFirstPerson { get; set; } = true;
-    public float FirstPersonHeadOffset { get; set; } = 0.03f;
-    public int FirstPersonFieldOfView { get; set; } = 90;
+    public float FirstPersonHeadOffsetForward { get; set; } = 0.03f;
+    public float FirstPersonHeadOffsetUpward { get; set; } = 0.0f;
+    public float FirstPersonHeadOffsetSideward { get; set; } = 0.0f;
+    public int FirstPersonHeadRotationPitch { get; set; } = 25;
+    public int FirstPersonFieldOfView { get; set; } = 78;
     public bool ThirdPersonControl { get; set; } = true;
+
+    [Newtonsoft.Json.JsonIgnore]
+    public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(FirstPersonHeadOffsetSideward, FirstPersonHeadOffsetUpward, FirstPersonHeadOffsetForward);
 
     // Version for migrations
     public int Version { get; set; } = 1;

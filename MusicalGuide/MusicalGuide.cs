@@ -12,7 +12,7 @@ namespace MusicalGuide;
 // ReSharper disable once ClassNeverInstantiated.Global - instantiated by Dalamud
 public sealed partial class MusicalGuide : IDalamudPlugin
 {
-    private const string CommandName = "/musicalguide";
+    private const string CommandName = "/mguide";
 
     public readonly Version Version = Assembly.GetExecutingAssembly().GetName().Version!;
 
@@ -104,6 +104,11 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
     private void OnCommand(string command, string args)
     {
+        if (args == "debug")
+        {
+            S.Framework.RunOnFrameworkThread(Debug.PrintDebug);
+            return;
+        }
         ToggleConfigUi();
     }
 
