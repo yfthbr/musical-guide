@@ -245,11 +245,13 @@ public class CamController : IDisposable
             return false;
 
         // Grab the bone's position and euler rotation
+        var playerGameObject = (GameObject*)S.ObjectTable.LocalPlayer!.Address;
         var bone = havokPose->Skeleton->Bones[BoneIndex];
         var boneTransform = havokPose->AccessBoneModelSpace(BoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
         var boneModelPos = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
         var boneQuaternion = QuaternionFromHkQuaternion(boneTransform->Rotation);
         var boneEuler = boneQuaternion.ToEuler();
+        var trueFacing = boneEuler.Y + playerGameObject->Rotation + MathF.PI / 2;
 
         // Apply pitch offset
         boneEuler.Z -= configuration.FirstPersonHeadRotationPitch * (MathF.PI / 180f);
@@ -277,16 +279,12 @@ public class CamController : IDisposable
 
         Cam->DirV = Cam->DirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
 
-        // Apply tilt to camera
-        CameraTilt = boneEuler.X;
-
         // Determine DirV and DirH limits
         float dirvMin, dirvMax;
         CalculateDirectionRange(boneEuler.Z, DirVMaxDeg, out dirvMin, out dirvMax);
         float dirhMin, dirhMax;
-        CalculateDirectionRange(boneEuler.Y + MathF.PI, DirHMaxDeg, out dirhMin, out dirhMax);
+        CalculateDirectionRange(trueFacing, DirHMaxDeg, out dirhMin, out dirhMax);
 
-        float? dirHAntiClockwise = null;
         if (previousTickWasFirstPerson)
         {
             // Apply rotation delta to camera
@@ -294,8 +292,7 @@ public class CamController : IDisposable
             // Yaw (Y axis) affects camera DirH
             if (Math.Abs(deltaEuler.Y) > EulerEpsilon)
             {
-                dirHAntiClockwise = Cam->DirH - deltaEuler.Y;
-                Cam->DirH = Cam->DirH + deltaEuler.Y;
+                Cam->DirH = Cam->DirH - deltaEuler.Y;
                 previousHeadEuler.Y = boneEuler.Y;
             }
 
@@ -308,7 +305,7 @@ public class CamController : IDisposable
         }
         else
         {
-            Cam->DirH = boneEuler.Y; // adjust for model facing direction
+            Cam->DirH = trueFacing; // adjust for model facing direction
             Cam->DirVMin = -2 * MathF.PI;
             Cam->DirVMax = 2 * MathF.PI;
             S.Log.Debug($"First person initial DirH set to {Cam->DirH} from bone yaw {boneEuler.Y}");
@@ -319,7 +316,7 @@ public class CamController : IDisposable
         var straightDown = -90 * MathF.PI / 180f;
 
         // Called before adjustment to ensure the singularity is handled correctly
-        RotateDirV();
+        Cam->DirV = RotateDir(Cam->DirV);
 
         // Jump over the singularity at straight up/down
         if (Math.Abs(Cam->DirV - straightUp) < DirVEpsilon || Math.Abs(Cam->DirV - straightDown) < DirVEpsilon)
@@ -331,19 +328,18 @@ public class CamController : IDisposable
         }
 
         // Called again after potential jump to ensure DirV is in valid range
-        RotateDirV();
+        // RotateDir();
+        Cam->DirH = RotateDir(Cam->DirH);
+
+        // Apply tilt to camera
+        var tiltFactor = 1f - RotationalDifference(Cam->DirH, trueFacing) / (MathF.PI / 2f);
+        CameraTilt = -boneEuler.X * tiltFactor;
 
         if (Math.Abs(Cam->DirV) > straightUp)
         {
             CameraTilt += (float)Math.PI; // flip camera when looking past straight up or down
-            if (dirHAntiClockwise.HasValue)
-            {
-                // Invert DirH when upside down
-                Cam->DirH = dirHAntiClockwise.Value;
-            }
         }
 
-        // S.Log.Debug($"Camera DirH: {Cam->DirH}, DirV: {Cam->DirV} - {targetDirV} / {dirvMin} to {dirvMax}, Tilt: {CameraTilt}, Bone Euler: {boneEuler}");
 
         // Clamp DirV and DirH to be within target range
         Cam->DirV = ClampRotational(Cam->DirV, dirvMin, dirvMax);
@@ -358,7 +354,6 @@ public class CamController : IDisposable
         var nextCameraPosition = (Vector3)S.ObjectTable.LocalPlayer!.Position + boneModelPos;
 
         // Account for draw offsets (e.g. SimpleHeels)
-        var playerGameObject = (GameObject*)S.ObjectTable.LocalPlayer!.Address;
         nextCameraPosition += playerGameObject->DrawOffset;
         nextCameraPosition += new Vector3(0, -0.1f, 0); // small downward offset to place camera better in front of face
 
@@ -370,11 +365,7 @@ public class CamController : IDisposable
 
     private static void CalculateDirectionRange(float rootRotation, int degrees, out float dirMin, out float dirMax)
     {
-        var targetDir = rootRotation % (2 * MathF.PI);
-        if (targetDir > MathF.PI)
-            targetDir -= 2 * MathF.PI;
-        else if (targetDir < -MathF.PI)
-            targetDir += 2 * MathF.PI;
+        var targetDir = rootRotation;
         dirMin = (targetDir - (degrees * (MathF.PI / 180f))) % (2 * MathF.PI);
         dirMax = (targetDir + (degrees * (MathF.PI / 180f))) % (2 * MathF.PI);
         if (dirMax < dirMin)
@@ -397,48 +388,64 @@ public class CamController : IDisposable
         }
     }
 
-    private float ClampRotational(float input, float min, float max)
+    private static float RotationalDifference(float one, float two)
     {
-#if DEBUG
-        var _input = input;
-#endif
-        // Clamp input to be within target range
-        if (input > max && input < min) // between min and max, choose closest
+        var diff = one - two;
+        if (diff > MathF.PI)
         {
-            var distToMin = Math.Abs(input - min);
-            var distToMax = Math.Abs(input - max);
-            if (distToMin < distToMax)
-                input = min;
-            else
-                input = max;
+            diff -= 2 * MathF.PI;
         }
-        else if (max > min) // Max has not rotated back to negatives
+        else if (diff < -MathF.PI)
         {
-            if (input < min) // below min
-                input = min;
-            else if (input > max) // above max
-                input = max;
+            diff += 2 * MathF.PI;
         }
-#if DEBUG
-        if (input != _input)
-            S.Log.Verbose($"Clamped rotational from {_input} to {input} within {min} to {max}");
-#endif
-        return input;
+        return MathF.Abs(diff);
     }
 
-    private unsafe void RotateDirV()
+    // Assumes radians input
+    private float ClampRotational(float rad, float min, float max)
+    {
+#if DEBUG
+        var input = rad;
+#endif
+        // Clamp input to be within target range by choosing closest edge, accounting for wrap-around
+        if ((min < max && (rad < min || rad > max)) ||
+            (min > max && (rad > max && rad < min)))
+        {
+            var distToMin = Math.Abs(rad - min);
+            var distToMax = Math.Abs(rad - max);
+
+            if (distToMax > MathF.PI)
+                distToMax = Math.Abs(distToMax - MathF.PI * 2);
+            if (distToMin > MathF.PI)
+                distToMin = Math.Abs(distToMin - MathF.PI * 2);
+
+            if (distToMin < distToMax)
+                rad = min;
+            else
+                rad = max;
+        }
+#if DEBUG
+        if (rad != input)
+            S.Log.Verbose($"Clamped rotational from {input} to {rad} within {min} to {max}");
+#endif
+        return rad;
+    }
+
+    private float RotateDir(float dir)
     {
         const float maxRotation = MathF.PI;
-        if (Cam->DirV > maxRotation)
+        if (dir > maxRotation)
         {
-            S.Log.Debug($"Rotating DirV down from {Cam->DirV}");
-            Cam->DirV -= 2 * maxRotation;
+            S.Log.Debug($"Rotating Dir down from {dir}");
+            return dir - 2 * maxRotation;
         }
-        else if (Cam->DirV < -maxRotation)
+        else if (dir < -maxRotation)
         {
-            S.Log.Debug($"Rotating DirV up from {Cam->DirV}");
-            Cam->DirV += 2 * maxRotation;
+            S.Log.Debug($"Rotating Dir up from {dir}");
+            return dir + 2 * maxRotation;
         }
+        return dir;
     }
 
     private unsafe FFXIVClientStructs.Havok.Animation.Rig.hkaPose* GetHavokPose(FFXIVClientStructs.FFXIV.Client.Graphics.Render.PartialSkeleton* partialSkeleton)
@@ -458,7 +465,7 @@ public class CamController : IDisposable
         // 1. Calculate the sin of the Pitch (X-axis)
         // Note: The term (w*x - y*z) might need sign flipping depending on 
         // exact quaternion generation, but this is the standard basis for Singularity on X.
-        float sinPitch = 2f * (q.W * q.X - q.Y * q.Z);
+        float sinPitch = 2f * -(q.W * q.X - q.Y * q.Z);
 
         float pitch, yaw, roll;
 
@@ -496,6 +503,34 @@ public class CamController : IDisposable
         // Y = Yaw   (Radians)
         // Z = Roll  (Radians)
         return new Vector3(pitch, yaw, roll);
+    }
+
+    internal static Vector3 QuaternionToEuler2(Quaternion q)
+    {
+        Vector3 angles = new();
+
+        // 
+        double sinr_cosp = 2 * (q.W * q.X + q.Y * q.Z);
+        double cosr_cosp = 1 - 2 * (q.X * q.X + q.Y * q.Y);
+        angles.X = (float)Math.Atan2(sinr_cosp, cosr_cosp);
+
+        // 
+        double sinp = 2 * (q.W * q.Y - q.Z * q.X);
+        if (Math.Abs(sinp) >= 1)
+        {
+            angles.Z = (float)Math.CopySign(Math.PI / 2, sinp);
+        }
+        else
+        {
+            angles.Z = (float)Math.Asin(sinp);
+        }
+
+        // 
+        double siny_cosp = 2 * (q.W * q.Z + q.X * q.Y);
+        double cosy_cosp = 1 - 2 * (q.Y * q.Y + q.Z * q.Z);
+        angles.Y = (float)Math.Atan2(siny_cosp, cosy_cosp);
+
+        return angles;
     }
 
     internal static Quaternion2 QuaternionFromHkQuaternion(FFXIVClientStructs.Havok.Common.Base.Math.Quaternion.hkQuaternionf hkQuat)

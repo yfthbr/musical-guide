@@ -19,7 +19,7 @@ unsafe static class Debug
             return;
         var partialSkeleton = &skeleton->PartialSkeletons[HEAD_SKELETON_INDEX];
 
-        for (int POSE_INDEX = 0; POSE_INDEX <= 3; POSE_INDEX++)
+        for (int POSE_INDEX = 0; POSE_INDEX <= 0; POSE_INDEX++)
         {
             var havokPose = partialSkeleton->GetHavokPose(POSE_INDEX);
             if (havokPose == null)
@@ -31,7 +31,8 @@ unsafe static class Debug
             var boneQuaternion = CamController.QuaternionFromHkQuaternion(boneTransform->Rotation);
             var boneEuler = boneQuaternion.ToEuler();
 
-            S.Log.Info($"Pose {POSE_INDEX}: Bone Model Position: {boneEuler}, Position: {boneModelPos}");
+            S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String} Rotation: {boneEuler}, Position: {boneModelPos}");
         }
+        S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation}");
     }
 }
