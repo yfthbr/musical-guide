@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.1.0"></a>
+## 1.1.0 (2026-01-07)
+
+### Features
+
+* more robust cam control, prep first person view
+
+### Bug Fixes
+
+* api14 in custom repository json
+* euler math
+* kinda working upside down too
+* more horizontal rotation, handle simple heels offsets
+* working first person view
+
 <a name="1.0.8"></a>
 ## 1.0.8 (2025-12-19)
 
