@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.1.1"></a>
+## 1.1.1 (2026-01-07)
+
+### Bug Fixes
+
+* always draw player character when using first person mod
+* one should not do math so late at night
+
 <a name="1.1.0"></a>
 ## 1.1.0 (2026-01-07)
 
