@@ -33,7 +33,7 @@ public class CamController : IDisposable
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
-    private const float DirVEpsilon = 0.0032f; // Small value to avoid an issue with the game flipping camera when looking straight up/down
+    private const float DirVEpsilon = 0.0050f; // Small value to avoid an issue with the game flipping camera when looking straight up/down, 1,570796327f ~= 90 degrees
     private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
     private const float EulerLargeChangeThreshold = 1f;
     private const int BoneIndex = 33; // j_f_uhana
@@ -62,7 +62,7 @@ public class CamController : IDisposable
 
     private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
     private static unsafe FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager* SceneCameraManager => FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager.Instance();
-    public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0;
+    public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0;
     #endregion
 
     #region Volatile State
@@ -76,6 +76,7 @@ public class CamController : IDisposable
     private DateTime pauseFpUntil = DateTime.MinValue;
     private Vector3 previousHeadEuler = new();
     private float previousDirV = 0f;
+    private Vector3 nextCameraPosition = new();
     #endregion
 
     #region Class Lifetime
@@ -83,7 +84,10 @@ public class CamController : IDisposable
 
     // Verify at: 48 8B C4 44 88 48 ?? 55 56
     private unsafe delegate void GetCameraPositionDelegate(Camera* camera, GameObject* target, Vector3* position, byte swapPerson);
+    // Verify at: 40 53 41 57 48 83 EC ?? 80 A1
+    private unsafe delegate void CameraUpdateDelegate(Camera* camera);
     private readonly Hook<GetCameraPositionDelegate>? getCameraPositionHook;
+    private readonly Hook<CameraUpdateDelegate>? cameraUpdateHook;
     private readonly Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
 
     public CamController(Configuration configuration)
@@ -95,10 +99,13 @@ public class CamController : IDisposable
         unsafe
         {
             var camVTable = Marshal.ReadIntPtr((nint)Cam);
+            var CameraUpdateAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 3); // vf3 is CameraUpdate
             var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
             getCameraPositionHook = S.Interop.HookFromAddress<GetCameraPositionDelegate>(GetCameraPositionAddress, GetCameraPositionDetour);
+            cameraUpdateHook = S.Interop.HookFromAddress<CameraUpdateDelegate>(CameraUpdateAddress, CameraUpdateDetour);
             shouldDrawGameObjectHook = S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
             getCameraPositionHook.Enable();
+            cameraUpdateHook.Enable();
             shouldDrawGameObjectHook.Enable();
 
             S.Log.Debug($"Current camera limits: Min={Cam->DirVMin}, Max={Cam->DirVMax}, FoV={Cam->FoV}");
@@ -115,8 +122,10 @@ public class CamController : IDisposable
     public void Dispose()
     {
         getCameraPositionHook?.Disable();
+        cameraUpdateHook?.Disable();
         shouldDrawGameObjectHook?.Disable();
         getCameraPositionHook?.Dispose();
+        cameraUpdateHook?.Dispose();
         shouldDrawGameObjectHook?.Dispose();
 
         unsafe
@@ -194,14 +203,33 @@ public class CamController : IDisposable
         return shouldDrawGameObjectHook!.Original(thisPtr, gameObject, sceneCameraPos, lookAtVector);
     }
 
+    private unsafe void CameraUpdateDetour(Camera* camera)
+    {
+        cameraUpdateHook!.Original(camera);
+        TryOverrideCameraPosition();
+    }
+
     private unsafe void GetCameraPositionDetour(Camera* camera, GameObject* target, Vector3* position, byte swapPerson)
     {
         getCameraPositionHook!.Original(camera, target, position, swapPerson);
-        TryOverrideCameraPosition(position);
+        if (configuration.RealFirstPerson && InFirstPerson && PlayerDrawObjectExists())
+        {
+            *position = nextCameraPosition;
+        }
     }
 
-    private unsafe bool TryOverrideCameraPosition(Vector3* position)
+    private unsafe bool PlayerDrawObjectExists()
     {
+        var player = S.ObjectTable.LocalPlayer;
+        if (player == null) return false;
+        var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)player.Address;
+        return chara->DrawObject->IsVisible;
+    }
+
+    private unsafe bool TryOverrideCameraPosition()
+    {
+        if (!PlayerDrawObjectExists())
+            return false;
         if (!configuration.RealFirstPerson || !InFirstPerson)
         {
             if (previousTickWasFirstPerson)
@@ -233,7 +261,7 @@ public class CamController : IDisposable
         // Note: floating point precision, use Abs with a small epsilon
 
         var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawObject;
-        if (charaBase == null)
+        if ((nint)charaBase == 0)
             return false;
 
         var skeleton = charaBase->Skeleton;
@@ -241,20 +269,18 @@ public class CamController : IDisposable
             return false;
         var partialSkeleton = &skeleton->PartialSkeletons[HeadSkeletonIndex];
         var havokPose = GetHavokPose(partialSkeleton);
-        if (havokPose == null)
+        if ((nint)havokPose == 0)
             return false;
 
         // Grab the bone's position and euler rotation
         var playerGameObject = (GameObject*)S.ObjectTable.LocalPlayer!.Address;
         var bone = havokPose->Skeleton->Bones[BoneIndex];
-        var boneTransform = havokPose->AccessBoneModelSpace(BoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
+        var boneTransform = havokPose->AccessBoneModelSpace(BoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.Propagate);
         var boneModelPos = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
         var boneQuaternion = QuaternionFromHkQuaternion(boneTransform->Rotation);
         var boneEuler = boneQuaternion.ToEuler();
         var trueFacing = boneEuler.Y + playerGameObject->Rotation + MathF.PI / 2;
-
-        // Apply pitch offset
-        boneEuler.Z -= configuration.FirstPersonHeadRotationPitch * (MathF.PI / 180f);
+        var truePitch = boneEuler.Z - configuration.FirstPersonHeadRotationPitch * (MathF.PI / 180f);
 
         var deltaEuler = boneEuler - previousHeadEuler;
         if (deltaEuler.Magnitude > EulerLargeChangeThreshold)
@@ -275,12 +301,13 @@ public class CamController : IDisposable
 
         // Begin adjusting camera rotation
 
-        previousDirV = Cam->DirV;
+        var dirV = Cam->DirV;
+        var dirH = Cam->DirH;
 
-        Cam->DirV = Cam->DirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
+        dirV = dirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
 
         // Determine DirV and DirH limits
-        CalculateDirectionRange(boneEuler.Z, DirVMaxDeg, out var dirvMin, out var dirvMax);
+        CalculateDirectionRange(truePitch, DirVMaxDeg, out var dirvMin, out var dirvMax);
         CalculateDirectionRange(trueFacing, DirHMaxDeg, out var dirhMin, out var dirhMax);
 
         if (previousTickWasFirstPerson)
@@ -290,57 +317,56 @@ public class CamController : IDisposable
             // Yaw (Y axis) affects camera DirH
             if (Math.Abs(deltaEuler.Y) > EulerEpsilon)
             {
-                Cam->DirH = Cam->DirH - deltaEuler.Y;
+                dirH = dirH + deltaEuler.Y;
                 previousHeadEuler.Y = boneEuler.Y;
             }
 
             // Pitch (Z axis) affects camera DirV
             if (Math.Abs(deltaEuler.Z) > EulerEpsilon)
             {
-                Cam->DirV = Cam->DirV + deltaEuler.Z;
+                dirV = dirV + deltaEuler.Z;
                 previousHeadEuler.Z = boneEuler.Z;
             }
         }
         else
         {
-            Cam->DirH = trueFacing; // adjust for model facing direction
+            dirH = trueFacing; // adjust for model facing direction
             Cam->DirVMin = -2 * MathF.PI;
             Cam->DirVMax = 2 * MathF.PI;
-            S.Log.Debug($"First person initial DirH set to {Cam->DirH} from bone yaw {boneEuler.Y}");
+            S.Log.Debug($"First person initial DirH set to {dirH} from bone yaw {boneEuler.Y}");
             previousTickWasFirstPerson = true;
         }
 
         var straightUp = 90 * MathF.PI / 180f;
         var straightDown = -90 * MathF.PI / 180f;
 
-        // Called before adjustment to ensure the singularity is handled correctly
-        Cam->DirV = RotateDir(Cam->DirV);
+        // Clamp DirV and DirH to be within target range
+        dirV = ClampRotational(dirV, dirvMin, dirvMax);
+        dirH = ClampRotational(dirH, dirhMin, dirhMax);
 
         // Jump over the singularity at straight up/down
-        if (Math.Abs(Cam->DirV - straightUp) < DirVEpsilon || Math.Abs(Cam->DirV - straightDown) < DirVEpsilon)
+        if (Math.Abs(dirV - straightUp) <= DirVEpsilon || Math.Abs(dirV - straightDown) <= DirVEpsilon)
         {
-            if (previousDirV < Cam->DirV)
-                Cam->DirV += DirVEpsilon * 2;
-            else if (previousDirV > Cam->DirV)
-                Cam->DirV -= DirVEpsilon * 2;
+            var before = dirV;
+            if (previousDirV < dirV)
+                dirV += DirVEpsilon * 2;
+            else if (previousDirV > dirV)
+                dirV -= DirVEpsilon * 2;
+            var w = Math.Abs(dirV - straightUp) < DirVEpsilon || Math.Abs(dirV - straightDown) < DirVEpsilon ? "!!!" : "";
+            S.Log.Verbose($"Adjusted DirV over singularity from {before} to {dirV}{w}");
         }
 
-        // Called again after potential jump to ensure DirV is in valid range
-        Cam->DirV = RotateDir(Cam->DirV);
-        Cam->DirH = RotateDir(Cam->DirH);
-
         // Apply tilt to camera
-        var tiltFactor = 1f - RotationalDifference(Cam->DirH, trueFacing) / (MathF.PI / 2f);
+        var tiltFactor = 1f - RotationalDifference(dirH, trueFacing) / (MathF.PI / 2f);
         CameraTilt = -boneEuler.X * tiltFactor;
 
-        if (Math.Abs(Cam->DirV) > straightUp)
+        if (Math.Abs(dirV) > straightUp)
         {
             CameraTilt += (float)Math.PI; // flip camera when looking past straight up or down
         }
 
-        // Clamp DirV and DirH to be within target range
-        Cam->DirV = ClampRotational(Cam->DirV, dirvMin, dirvMax);
-        Cam->DirH = ClampRotational(Cam->DirH, dirhMin, dirhMax);
+        Cam->DirV = RotateDir(dirV);
+        Cam->DirH = RotateDir(dirH);
 
         // S.Log.Verbose($"First Person Camera Update: DirV={Cam->DirV} (Min={dirvMin},Max={dirvMax}), DirH={Cam->DirH} (Min={dirhMin},Max={dirhMax}), Tilt={CameraTilt}");
 
@@ -357,8 +383,11 @@ public class CamController : IDisposable
         else
         {
             // If free moving or using emotes in free space, apply rotation to entire position
-            boneModelPos = Vector3.Transform(boneModelPos + configuredOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+            boneModelPos = Vector3.Transform(boneModelPos, Matrix4x4.CreateFromQuaternion(charaBase->Rotation)) + Vector3.Transform(configuredOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
         }
+
+        // var warning = Math.Abs(Cam->DirV - straightUp) < DirVEpsilon || Math.Abs(Cam->DirV - straightDown) < DirVEpsilon ? "!!!" : "";
+        // S.Log.Verbose($"{new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z)} -> {boneModelPos}, DirV={Cam->DirV}{warning}, DirH={Cam->DirH}, Tilt={CameraTilt}");
 
         var nextCameraPosition = (Vector3)S.ObjectTable.LocalPlayer!.Position + boneModelPos;
 
@@ -367,7 +396,9 @@ public class CamController : IDisposable
         nextCameraPosition += new Vector3(0, -0.1f, 0); // small downward offset to place camera better in front of face
 
         // In first person with RealFirstPerson enabled, override position
-        *position = nextCameraPosition;
+        this.nextCameraPosition = nextCameraPosition;
+
+        previousDirV = Cam->DirV;
 
         return true;
     }
@@ -619,6 +650,7 @@ internal struct ExpandedCamera
 {
     [FieldOffset(0x170)] public float Tilt;
     [FieldOffset(0x180)] public int Mode;
+    [FieldOffset(0x184)] public int ControlType;
     [FieldOffset(0x1F4)] public byte IsFlipped;
 }
 
