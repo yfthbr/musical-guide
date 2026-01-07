@@ -33,7 +33,7 @@ public class CamController : IDisposable
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
-    private const float DirVEpsilon = 0.003f; // Small value to avoid an issue with the game flipping camera when looking straight up/down
+    private const float DirVEpsilon = 0.0032f; // Small value to avoid an issue with the game flipping camera when looking straight up/down
     private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
     private const float EulerLargeChangeThreshold = 1f;
     private const int BoneIndex = 33; // j_f_uhana
@@ -326,7 +326,7 @@ public class CamController : IDisposable
         }
 
         // Called again after potential jump to ensure DirV is in valid range
-        // RotateDir();
+        Cam->DirV = RotateDir(Cam->DirV);
         Cam->DirH = RotateDir(Cam->DirH);
 
         // Apply tilt to camera
@@ -342,19 +342,22 @@ public class CamController : IDisposable
         Cam->DirV = ClampRotational(Cam->DirV, dirvMin, dirvMax);
         Cam->DirH = ClampRotational(Cam->DirH, dirhMin, dirhMax);
 
+        // S.Log.Verbose($"First Person Camera Update: DirV={Cam->DirV} (Min={dirvMin},Max={dirvMax}), DirH={Cam->DirH} (Min={dirhMin},Max={dirhMax}), Tilt={CameraTilt}");
+
         // Apply FOV
         Cam->FoV = configuration.FirstPersonFieldOfView / 100f;
 
         // Rotate boneModelPos by the character's world rotation
+        var configuredOffset = Vector3.Transform(configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(boneQuaternion.ToQuaternion().Normalized));
         if (PlayerIsSeated())
         {
             // If seated/anchored, rotation only applies to our configured offset
-            boneModelPos += Vector3.Transform(configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+            boneModelPos += Vector3.Transform(configuredOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
         }
         else
         {
             // If free moving or using emotes in free space, apply rotation to entire position
-            boneModelPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
+            boneModelPos = Vector3.Transform(boneModelPos + configuredOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
         }
 
         var nextCameraPosition = (Vector3)S.ObjectTable.LocalPlayer!.Position + boneModelPos;
@@ -515,34 +518,6 @@ public class CamController : IDisposable
         // Y = Yaw   (Radians)
         // Z = Roll  (Radians)
         return new Vector3(pitch, yaw, roll);
-    }
-
-    internal static Vector3 QuaternionToEuler2(Quaternion q)
-    {
-        Vector3 angles = new();
-
-        // 
-        double sinr_cosp = 2 * (q.W * q.X + q.Y * q.Z);
-        double cosr_cosp = 1 - 2 * (q.X * q.X + q.Y * q.Y);
-        angles.X = (float)Math.Atan2(sinr_cosp, cosr_cosp);
-
-        // 
-        double sinp = 2 * (q.W * q.Y - q.Z * q.X);
-        if (Math.Abs(sinp) >= 1)
-        {
-            angles.Z = (float)Math.CopySign(Math.PI / 2, sinp);
-        }
-        else
-        {
-            angles.Z = (float)Math.Asin(sinp);
-        }
-
-        // 
-        double siny_cosp = 2 * (q.W * q.Z + q.X * q.Y);
-        double cosy_cosp = 1 - 2 * (q.Y * q.Y + q.Z * q.Z);
-        angles.Y = (float)Math.Atan2(siny_cosp, cosy_cosp);
-
-        return angles;
     }
 
     internal static Quaternion2 QuaternionFromHkQuaternion(FFXIVClientStructs.Havok.Common.Base.Math.Quaternion.hkQuaternionf hkQuat)
