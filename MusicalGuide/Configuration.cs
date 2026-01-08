@@ -15,6 +15,7 @@ public class Configuration : IPluginConfiguration
     public bool UseFurtherCameraForLargerMounts { get; set; } = true;
 
     public bool RealFirstPerson { get; set; } = true;
+    public bool ReducedMotion { get; set; } = false;
     public float FirstPersonHeadOffsetForward { get; set; } = 0.03f;
     public float FirstPersonHeadOffsetUpward { get; set; } = 0.0f;
     public float FirstPersonHeadOffsetSideward { get; set; } = 0.0f;

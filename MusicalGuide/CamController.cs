@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
@@ -352,10 +353,8 @@ public class CamController : IDisposable
         // Extract Roll angle from qRoll (Z-axis rotation)
         // Using Atan2 on the matrix components of the quaternion
         // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
-        var trueRoll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
-
-        S.Log.Verbose($"World Vectors: Pitch={truePitch:F3} ({truePitch * RadiansToDegrees:F1}), Yaw={trueYaw:F3} ({trueYaw * RadiansToDegrees:F1}), Roll={trueRoll:F3} ({trueRoll * RadiansToDegrees:F1})");
-        S.Log.Verbose($"Character rotation: X={charaBase->DrawObject.Object.Rotation.X:F3}, Y={charaBase->DrawObject.Object.Rotation.Y:F3}, Z={charaBase->DrawObject.Object.Rotation.Z:F3}, W={charaBase->DrawObject.Object.Rotation.W:F3} - Bone rotation: {boneTransformation}");
+        // Set to 0 on reduced motion
+        var trueRoll = configuration.ReducedMotion ? 0f : MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
 
         // // Apply configured offsets to virtual bone position
         var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
@@ -377,9 +376,10 @@ public class CamController : IDisposable
 
             // Yaw affects camera DirH
             var diff = RotationalDifference(trueYaw, previousFacing);
-            if (Math.Abs(diff) > EulerEpsilon && !mouseKeyHeld) // TODO: implement mouseKeyHeld detection
+            if (Math.Abs(diff) > EulerEpsilon && !mouseKeyHeld)
             {
-                dirH += diff;
+                if (!configuration.ReducedMotion)
+                    dirH += diff;
                 previousFacing = trueYaw;
             }
 
@@ -387,7 +387,8 @@ public class CamController : IDisposable
             diff = RotationalDifference(truePitch, previousHeadPitch);
             if (Math.Abs(diff) > EulerEpsilon)
             {
-                dirV += diff;
+                if (!configuration.ReducedMotion)
+                    dirV += diff;
                 previousHeadPitch = truePitch;
             }
         }
@@ -401,8 +402,9 @@ public class CamController : IDisposable
         var straightUp = 90 * DegreesToRadians;
         var straightDown = -90 * DegreesToRadians;
 
-        // Clamp DirV and DirH to be within target range
-        dirV = ClampRotational(dirV, dirvMin, dirvMax);
+        // Clamp DirV before singularity check
+        if (!configuration.ReducedMotion)
+            dirV = ClampRotational(dirV, dirvMin, dirvMax);
 
         // Jump over the singularity at straight up/down
         if (Math.Abs(dirV - straightUp) <= DirVEpsilon || Math.Abs(dirV - straightDown) <= DirVEpsilon)
@@ -415,11 +417,12 @@ public class CamController : IDisposable
         }
 
         var isFlippedByGame = Math.Abs(dirV) > straightUp;
-        var isFlippedByBone = Math.Abs(truePitch) > straightUp;
 
-        // Facing range is flipped when looking upside down
+        // Handle DirH clamping
         CalculateDirectionRange(trueYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
-        dirH = ClampRotational(RotateDir(dirH), dirhMin, dirhMax);
+        dirH = RotateDir(dirH);
+        if (!configuration.ReducedMotion)
+            dirH = ClampRotational(dirH, dirhMin, dirhMax);
 
         // Apply tilt to camera
         var distFromStraightH = Math.Abs(RotationalDifference(dirH, trueYaw));

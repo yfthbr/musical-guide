@@ -58,6 +58,13 @@ public class ConfigWindow : Window, IDisposable
                 configuration.Save();
             }
 
+            var reducedMotion = configuration.ReducedMotion;
+            if (ImGui.Checkbox("Enable Reduced Motion (no rotation follow)", ref reducedMotion))
+            {
+                configuration.ReducedMotion = reducedMotion;
+                configuration.Save();
+            }
+
             using (ImRaii.PushIndent())
             {
                 if (ImGui.CollapsingHeader("First Person Adjustments", ImGuiTreeNodeFlags.Framed))
