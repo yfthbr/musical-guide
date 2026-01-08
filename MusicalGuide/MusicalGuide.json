@@ -2,9 +2,9 @@
     "Author": "YF",
     "Name": "Musical Guide",
     "InternalName": "MusicalGuide",
-    "Description": "Automates player camera distance changes, so you can be close to your character when crafting or at maximum distance when mounted up without having to zoom yourself each time. Brought to you by a broken scrollwheel and a desire to be more zoomed in sometimes.",
+    "Description": "Provides real first person view to see your character, and adjusts camera distance based on game conditions (e.g. close in camera when you begin crafting, maximum distance when combat begins or you enter an instanced area)\n\n/mguide to open configuration window.",
     "RepoUrl": "https://github.com/Sidiousious/musical-guide",
     "Tags": ["Camera"],
     "IconUrl": "https://yfplugins.kinkop.eu/musical-guide.png",
-    "Punchline": "Save and restore camera distance in different situations."
+    "Punchline": "Enhanced camera distance control and first-person experience."
 }

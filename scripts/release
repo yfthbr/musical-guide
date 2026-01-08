@@ -19,7 +19,7 @@ cat << EOF > repository.json
     "Name": "Musical Guide",
     "InternalName": "MusicalGuide",
     "AssemblyVersion": "$VERSION",
-    "Description": "Save and restore camera distance in different situations.",
+    "Description": "Provides real first person view to see your character, and adjusts camera distance based on game conditions (e.g. close in camera when you begin crafting, maximum distance when combat begins or you enter an instanced area)\n\n/mguide to open configuration window.",
     "ApplicableVersion": "any",
     "RepoUrl": "https://github.com/Sidiousious/musical-guide",
     "Tags": [
@@ -29,7 +29,7 @@ cat << EOF > repository.json
     "LoadPriority": 0,
     "DownloadCount": 69,
     "IconUrl": "https://yfplugins.kinkop.eu/musical-guide.png",
-    "Punchline": "Save and restore camera distance in different situations.",
+    "Punchline": "Enhanced camera distance control and first-person experience.",
     "IsHide": "False",
     "IsTestingExclusive": "False",
     "DownloadLinkInstall": "https://yfplugins.kinkop.eu/musical-guide/$VERSION.zip",
