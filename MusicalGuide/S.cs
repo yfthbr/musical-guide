@@ -29,4 +29,7 @@ public class S
 
     [PluginService]
     internal static IGameInteropProvider Interop { get; private set; } = null!;
+
+    [PluginService]
+    internal static IKeyState KeyState { get; private set; } = null!;
 }
