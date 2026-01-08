@@ -358,8 +358,8 @@ public class CamController : IDisposable
         S.Log.Verbose($"Character rotation: X={charaBase->DrawObject.Object.Rotation.X:F3}, Y={charaBase->DrawObject.Object.Rotation.Y:F3}, Z={charaBase->DrawObject.Object.Rotation.Z:F3}, W={charaBase->DrawObject.Object.Rotation.W:F3} - Bone rotation: {boneTransformation}");
 
         // // Apply configured offsets to virtual bone position
-        // var offset = Vector3.Transform(configuration.FirstPersonOffset, boneWorldRotation);
-        // boneModelPos += offset;
+        var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
+        boneModelPos += offset;
 
         // Begin adjusting camera rotation
 

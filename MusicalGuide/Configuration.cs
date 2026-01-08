@@ -22,8 +22,8 @@ public class Configuration : IPluginConfiguration
     public int FirstPersonFieldOfView { get; set; } = 78;
     public bool ThirdPersonControl { get; set; } = true;
 
-    [Newtonsoft.Json.JsonIgnore]
-    public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(FirstPersonHeadOffsetForward, -FirstPersonHeadOffsetUpward, FirstPersonHeadOffsetSideward);
+    [Newtonsoft.Json.JsonIgnore] // 0.1f and 0.12f are empirical adjustments to better match eye position, based on female miqo'te
+    public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(FirstPersonHeadOffsetSideward, FirstPersonHeadOffsetUpward + 0.1f, FirstPersonHeadOffsetForward + 0.12f);
 
     // Version for migrations
     public int Version { get; set; } = 1;
