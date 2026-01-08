@@ -64,7 +64,7 @@ public class ConfigWindow : Window, IDisposable
                 configuration.ReducedMotion = reducedMotion;
                 configuration.Save();
             }
-            ImGui.Text("Using your mouse to rotate your character in first person (RMB) is only possible with this setting.");
+
             ImGui.Spacing();
 
             using (ImRaii.PushIndent())

@@ -73,7 +73,6 @@ public class CamController : IDisposable
     #region Volatile State
     private volatile float targetDistance = MaxCameraDistance;
     private volatile bool shouldAdjustDistance = true;
-    private volatile bool mouseKeyHeld = false;
     #endregion
 
     #region FirstPersonState
@@ -128,7 +127,6 @@ public class CamController : IDisposable
             lastUpdateTime = DateTime.Now;
             ProcessThrottledFrameworkUpdate();
         }
-        // mouseKeyHeld = MouseDevice
     }
 
     private void OnConfigurationChanged()
@@ -365,9 +363,9 @@ public class CamController : IDisposable
 
             // Yaw affects camera DirH
             var diff = RotationalDifference(trueYaw, previousFacing);
-            if (Math.Abs(diff) > EulerEpsilon && !mouseKeyHeld)
+            if (Math.Abs(diff) > EulerEpsilon)
             {
-                if (!configuration.ReducedMotion)
+                if (!configuration.ReducedMotion && !InputManager.IsRightMouseDown())
                     dirH += diff;
                 previousFacing = trueYaw;
             }
