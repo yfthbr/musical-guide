@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.1.4"></a>
+## 1.1.4 (2026-01-08)
+
+### Bug Fixes
+
+* this time for real
+
 <a name="1.1.3"></a>
 ## 1.1.3 (2026-01-08)
 
