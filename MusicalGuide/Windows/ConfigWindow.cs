@@ -70,14 +70,14 @@ public class ConfigWindow : Window, IDisposable
                     }
 
                     var headOffsetForward = configuration.FirstPersonHeadOffsetForward;
-                    if (ImGui.SliderFloat("Camera Offset Forward", ref headOffsetForward, 0.0f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderFloat("Camera Offset Forward", ref headOffsetForward, -0.05f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetForward = headOffsetForward;
                         configuration.Save();
                     }
 
                     var headOffsetUpward = configuration.FirstPersonHeadOffsetUpward;
-                    if (ImGui.SliderFloat("Camera Offset Upward", ref headOffsetUpward, -0.15f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderFloat("Camera Offset Upward", ref headOffsetUpward, -0.15f, 0.25f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetUpward = headOffsetUpward;
                         configuration.Save();

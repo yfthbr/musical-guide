@@ -21,6 +21,17 @@ unsafe static class Debug
         if (skeleton->PartialSkeletonCount < 2)
             return;
         var partialSkeleton = &skeleton->PartialSkeletons[HEAD_SKELETON_INDEX];
+        {
+            var havokPose = partialSkeleton->GetHavokPose(0);
+            if (havokPose == null)
+                return;
+
+            for (int i = 0; i < havokPose->Skeleton->Bones.Length; i++)
+            {
+                var bone = havokPose->Skeleton->Bones[i];
+                S.Log.Info($"Bone {i}: {bone.Name.String}");
+            }
+        }
 
         for (int POSE_INDEX = 0; POSE_INDEX <= 3; POSE_INDEX++)
         {
@@ -31,7 +42,7 @@ unsafe static class Debug
             var bone = havokPose->Skeleton->Bones[BONE_INDEX];
             var boneTransform = havokPose->AccessBoneModelSpace(BONE_INDEX, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.Propagate);
             var boneModelPos = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
-            var boneQuaternion = CamController.QuaternionFromHkQuaternion(boneTransform->Rotation);
+            var boneQuaternion = new Quaternion2(boneTransform);
             var boneEuler = boneQuaternion.ToEuler();
 
             var transformedPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));

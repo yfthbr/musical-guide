@@ -23,7 +23,7 @@ public class Configuration : IPluginConfiguration
     public bool ThirdPersonControl { get; set; } = true;
 
     [Newtonsoft.Json.JsonIgnore]
-    public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(-FirstPersonHeadOffsetForward, FirstPersonHeadOffsetUpward, -FirstPersonHeadOffsetSideward);
+    public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(FirstPersonHeadOffsetSideward, FirstPersonHeadOffsetUpward, FirstPersonHeadOffsetForward);
 
     // Version for migrations
     public int Version { get; set; } = 1;
