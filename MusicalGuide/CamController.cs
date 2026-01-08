@@ -96,7 +96,6 @@ public class CamController : IDisposable
     // Verify at: 40 53 41 57 48 83 EC ?? 80 A1
     private unsafe delegate void CameraUpdateDelegate(Camera* camera);
     private readonly Hook<GetCameraPositionDelegate>? getCameraPositionHook;
-    private readonly Hook<CameraUpdateDelegate>? cameraUpdateHook;
     private readonly Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
 
     public CamController(Configuration configuration)
@@ -112,11 +111,9 @@ public class CamController : IDisposable
             var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
 
             getCameraPositionHook = S.Interop.HookFromAddress<GetCameraPositionDelegate>(GetCameraPositionAddress, GetCameraPositionDetour);
-            cameraUpdateHook = S.Interop.HookFromAddress<CameraUpdateDelegate>(CameraUpdateAddress, CameraUpdateDetour);
             shouldDrawGameObjectHook = S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
 
             getCameraPositionHook.Enable();
-            cameraUpdateHook.Enable();
             shouldDrawGameObjectHook.Enable();
 
             S.Log.Debug($"Current camera limits: Min={Cam->DirVMin}, Max={Cam->DirVMax}, FoV={Cam->FoV}");
@@ -138,10 +135,8 @@ public class CamController : IDisposable
     public void Dispose()
     {
         getCameraPositionHook?.Disable();
-        cameraUpdateHook?.Disable();
         shouldDrawGameObjectHook?.Disable();
         getCameraPositionHook?.Dispose();
-        cameraUpdateHook?.Dispose();
         shouldDrawGameObjectHook?.Dispose();
 
         S.Framework.Update -= FrameworkOnUpdateEvent;
@@ -239,11 +234,6 @@ public class CamController : IDisposable
         return shouldDrawGameObjectHook!.Original(thisPtr, gameObject, sceneCameraPos, lookAtVector);
     }
 
-    private unsafe void CameraUpdateDetour(Camera* camera)
-    {
-        cameraUpdateHook!.Original(camera);
-    }
-
     private unsafe void GetCameraPositionDetour(Camera* camera, GameObject* target, Vector3* position, byte swapPerson)
     {
         getCameraPositionHook!.Original(camera, target, position, swapPerson);
@@ -314,13 +304,16 @@ public class CamController : IDisposable
         var bone = havokPose->Skeleton->Bones[NoseBoneIndex];
         var boneTransform = havokPose->AccessBoneModelSpace(NoseBoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
         var boneModelPos = Vector3.Transform(new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z), playerModelMatrix);
-        var boneQuaternion = new Quaternion2(boneTransform);
-        var boneEuler = Vector3.Transform(boneQuaternion.ToEuler(), playerRotationMatrix);
+        var boneTransformation = new Transformation(boneTransform);
+        var boneWorldRotation = boneTransformation.ToQuaternion() * charaBase->DrawObject.Object.Rotation;
 
-        var worldVectors = GetWorldPitchYaw(boneEuler);
+        var boneEuler = Vector3.Transform(System.Numerics.Vector3.UnitZ, boneWorldRotation);
+        var worldVectors = GetPitchYawFromDirection(boneEuler);
+        S.Log.Verbose($"World Vectors: Pitch={worldVectors.X} ({worldVectors.X * RadiansToDegrees}), Yaw={worldVectors.Y} ({worldVectors.Y * RadiansToDegrees})");
 
-        var trueYaw = worldVectors.Y;
-        var truePitch = -worldVectors.X;
+        var trueYaw = worldVectors.Y + MathF.PI / 2f; // Adjust to match camera yaw reference
+        var truePitch = worldVectors.X;
+        var trueRoll = -boneEuler.Y;
 
         // Begin adjusting camera rotation
 
@@ -379,18 +372,18 @@ public class CamController : IDisposable
         var isFlippedByBone = Math.Abs(truePitch) > straightUp;
 
         // Facing range is flipped when looking upside down
-        CalculateDirectionRange(trueYaw, DirHMaxDeg, MathF.PI, out var dirhMin, out var dirhMax);
+        CalculateDirectionRange(trueYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
         dirH = ClampRotational(RotateDir(dirH), dirhMin, dirhMax);
 
         // Apply tilt to camera
         var distFromStraightH = Math.Abs(RotationalDifference(dirH, trueYaw));
         var distFromStraightV = Math.Abs(RotationalDifference(dirV, truePitch));
-        var tiltFactor = 1f - (Math.Max(distFromStraightH, distFromStraightV) / (MathF.PI / 2f));
-        CameraTilt = -boneEuler.Y * tiltFactor;
+        var tiltFactor = (1f - (Math.Max(distFromStraightH, distFromStraightV) / (MathF.PI / 2f))) * 0.5f;
+        CameraTilt = trueRoll * tiltFactor;
 
         if (isFlippedByGame)
         {
-            CameraTilt = -(boneEuler.Y * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
+            CameraTilt = -(trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
         }
 
         // Apply FOV and rotational changes
@@ -398,12 +391,12 @@ public class CamController : IDisposable
         Cam->DirV = RotateDir(dirV);
         Cam->DirH = dirH;
 
-        S.Log.Verbose($"@@@@@@@@@ Facing: {trueYaw:F2} ({trueYaw * RadiansToDegrees:F2}) - Pitch: {truePitch:F2} ({truePitch * RadiansToDegrees:F2}) - Roll: {boneEuler.Y:F2} ({boneEuler.Y * RadiansToDegrees:F2})");
+        // S.Log.Verbose($"@@@@@@@@@ Facing: {trueYaw:F2} ({trueYaw * RadiansToDegrees:F2}) - Pitch: {truePitch:F2} ({truePitch * RadiansToDegrees:F2}) - Roll: {boneEuler.Y:F2} ({boneEuler.Y * RadiansToDegrees:F2})");
         S.Log.Verbose($"Tiltfactor: {tiltFactor:F2} - CameraTilt: {CameraTilt:F2} ({CameraTilt * RadiansToDegrees:F2}) - DistFromStraightH: {distFromStraightH:F2} - DistFromStraightV: {distFromStraightV:F2}");
         // S.Log.Verbose($"DirV: {Cam->DirV:F2} ({Cam->DirV * RadiansToDegrees:F2}) - DirH: {Cam->DirH:F2} ({Cam->DirH * RadiansToDegrees:F2}) - Tilt: {CameraTilt:F2} ({CameraTilt * RadiansToDegrees:F2})");
         // S.Log.Verbose($"DirV Limits: Min={Cam->DirVMin:F2} ({Cam->DirVMin * RadiansToDegrees:F2}) - Max={Cam->DirVMax:F2} ({Cam->DirVMax * RadiansToDegrees:F2})");
         // S.Log.Verbose($"DirH Limits: Min={dirhMin:F2} ({dirhMin * RadiansToDegrees:F2}) - Max={dirhMax:F2} ({dirhMax * RadiansToDegrees:F2})");
-        S.Log.Verbose($"IsFlipped: Game={isFlippedByGame} - Bone={isFlippedByBone} - CamIsFlipped={IsCameraFlipped}");
+        // S.Log.Verbose($"IsFlipped: Game={isFlippedByGame} - Bone={isFlippedByBone} - CamIsFlipped={IsCameraFlipped}");
 
         // Apply configured offsets
         // var offset = Vector3.Transform(configuration.FirstPersonOffset, Matrix4x4.CreateFromYawPitchRoll(trueFacing, truePitch, boneEuler.X));
@@ -516,49 +509,28 @@ public class CamController : IDisposable
     }
 
     /// <summary>
-    /// Transforms custom Euler input into World-Relative Pitch and Yaw.
-    /// Returns Vector2(Pitch, Yaw).
+    /// Calculates World Pitch and Yaw from a world-space direction vector.
     /// </summary>
-    public Vector2 GetWorldPitchYaw(Vector3 customEuler)
+    public Vector2 GetPitchYawFromDirection(Vector3 lookDir)
     {
-        var invertY = true; // Try this if roll goes the wrong way
+        // Normalize to ensure consistent trigonometry
+        lookDir = Vector3.Normalize(lookDir);
 
-        var yAngle = invertY ? -customEuler.Y : customEuler.Y;
-        var xAngle = customEuler.X;
-        var zAngle = customEuler.Z;
-
-        // --- STEP 1: Reconstruct the Rotation ---
-        // We create rotations around the LOCAL axes.
-        Quaternion rotY = Quaternion.CreateFromAxisAngle(Vector3.Up, yAngle);     // Roll axis
-        Quaternion rotX = Quaternion.CreateFromAxisAngle(Vector3.Right, xAngle);  // Potential Pitch
-        Quaternion rotZ = Quaternion.CreateFromAxisAngle(Vector3.Forward, zAngle);// Potential Yaw
-
-        // "X and Z rotate with Y" implies Y is the parent (applied "last" in local multiplication 
-        // or "first" in global). In Unity/C#, multiplying q1 * q2 applies q2, then q1.
-        // So `rotY * ...` ensures X and Z are affected by Y.
-
-        // Order: Y -> X -> Z
-        var finalRotation = rotY * rotX * rotZ;
-
-        // --- STEP 2: Find the "Look" Direction ---
-        // Even if Y is your roll axis, Pitch/Yaw are calculated from where the lens points.
-        var lookDir = Vector3.Transform(System.Numerics.Vector3.UnitZ, finalRotation);
-
-        // --- STEP 3: Trigonometry to find World Pitch/Yaw ---
-
-        // Pitch: Angle between the LookDir and the Horizon (XZ plane).
-        // We use Asin of the Y component (height). 
-        // Note: Since lookDir is normalized (length 1), lookDir.y is the sine of the angle.
+        // --- Pitch (Elevation) ---
+        // Angle between the LookDir and the Horizon.
+        // Asin returns radians between -PI/2 and +PI/2 (-90 to +90 degrees)
+        // This works perfectly even if the player is upside down.
         var pitchRad = MathF.Asin(lookDir.Y);
 
-        // Yaw: Rotation around the World Up axis.
-        // We use Atan2 of the X and Z components.
+        // --- Yaw (Heading) ---
+        // Rotation around the World Y-axis (Up).
+        // Atan2 handles all 4 quadrants (-PI to +PI)
         var yawRad = MathF.Atan2(lookDir.X, lookDir.Z);
 
-        // Normalize Yaw to 0-360 range if preferred
-        // if (yawRad < 0) yawRad += 2 * MathF.PI;
+        // [Optional] Normalize Yaw to 0 -> 2PI range
+        if (yawRad < 0) yawRad += 2 * MathF.PI;
 
-        return new Vector2(pitchRad, yawRad - (MathF.PI / 2f)); // Adjust yaw to match game's 0 forward
+        return new Vector2(pitchRad, yawRad); // Returns Radians
     }
     #endregion
 
@@ -669,13 +641,13 @@ public struct ExpandedCharacterBase
     public readonly float ScaleFactor => ScaleFactor1 * ScaleFactor2;
 }
 
-public class Quaternion2
+public class Transformation
 {
     public Vector3 Position = Vector3.Zero;
     public Vector3 Scale = Vector3.Zero;
     public Quaternion Rotation = Quaternion.Identity;
 
-    public unsafe Quaternion2(hkQsTransformf* boneTransform)
+    public unsafe Transformation(hkQsTransformf* boneTransform)
     {
         Rotation = new Quaternion(boneTransform->Rotation.X, boneTransform->Rotation.Y, boneTransform->Rotation.Z, boneTransform->Rotation.W);
         Position = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
@@ -689,6 +661,11 @@ public class Quaternion2
         var roll = MathF.Atan2(2.0f * (Rotation.X * Rotation.Y + Rotation.Z * Rotation.W), 1.0f - 2.0f * (Rotation.X * Rotation.X + Rotation.Z * Rotation.Z));
 
         return new Vector3(yaw, pitch, roll);
+    }
+
+    public Quaternion ToQuaternion()
+    {
+        return Rotation;
     }
 
     // public Quaternion2 Multiply(Matrix4x4 matrix)

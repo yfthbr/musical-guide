@@ -42,7 +42,7 @@ unsafe static class Debug
             var bone = havokPose->Skeleton->Bones[BONE_INDEX];
             var boneTransform = havokPose->AccessBoneModelSpace(BONE_INDEX, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.Propagate);
             var boneModelPos = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
-            var boneQuaternion = new Quaternion2(boneTransform);
+            var boneQuaternion = new Transformation(boneTransform);
             var boneEuler = boneQuaternion.ToEuler();
 
             var transformedPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
