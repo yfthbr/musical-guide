@@ -64,7 +64,8 @@ public class ConfigWindow : Window, IDisposable
                 configuration.ReducedMotion = reducedMotion;
                 configuration.Save();
             }
-            ImGui.Text("Reduces camera motion in first person to help prevent motion sickness. Allows using mouse to rotate character in first person.");
+            ImGui.Text("Using your mouse to rotate your character in first person (RMB) is only possible with this setting.");
+            ImGui.Spacing();
 
             using (ImRaii.PushIndent())
             {
