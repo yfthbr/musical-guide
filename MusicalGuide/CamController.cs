@@ -190,6 +190,9 @@ public class CamController : IDisposable
     #region First Person Handling
     private unsafe bool ShouldDrawGameObjectDetour(CameraBase* thisPtr, GameObject* gameObject, Vector3* sceneCameraPos, Vector3* lookAtVector)
     {
+        if (!configuration.Enabled)
+            goto Original;
+
         // Force draw all player and companion in first person with RealFirstPerson enabled
         var firstPersonModificationActive = configuration.RealFirstPerson && InFirstPerson;
         if (!firstPersonModificationActive)
@@ -240,7 +243,7 @@ public class CamController : IDisposable
     {
         if (!PlayerDrawObjectExists() || S.ClientState.IsGPosing)
             return false;
-        if (!configuration.RealFirstPerson || !InFirstPerson)
+        if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
         {
             if (previousTickWasFirstPerson)
             {
