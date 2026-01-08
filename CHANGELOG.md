@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.1.6"></a>
+## 1.1.6 (2026-01-08)
+
+### Bug Fixes
+
+* increase horizontal cam allowance from 90deg to 120deg
+
 <a name="1.1.5"></a>
 ## 1.1.5 (2026-01-08)
 
