@@ -123,6 +123,13 @@ public class ConfigWindow : Window, IDisposable
         {
             ImGui.Spacing();
 
+            var thirdPersonControl = configuration.ThirdPersonControl;
+            if (ImGui.Checkbox("Enable Third Person Camera Control", ref thirdPersonControl))
+            {
+                configuration.ThirdPersonControl = thirdPersonControl;
+                configuration.Save();
+            }
+
             var automatic = configuration.UseAutomaticDistance;
             if (ImGui.Checkbox("Remember previously used distances", ref automatic))
             {
