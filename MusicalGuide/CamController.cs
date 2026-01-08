@@ -34,7 +34,7 @@ public class CamController : IDisposable
     private const int DelayMs = 16;
 
     private const int DirVMaxDeg = 100;
-    private const int DirHMaxDeg = 90;
+    private const int DirHMaxDeg = 120;
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
