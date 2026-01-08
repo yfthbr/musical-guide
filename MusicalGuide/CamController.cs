@@ -1,15 +1,12 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Dalamud.Bindings.ImGui;
-using Dalamud.Game.ClientState.Keys;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Graphics;
-using FFXIVClientStructs.FFXIV.Client.System.Input;
 using FFXIVClientStructs.FFXIV.Common.Math;
 using FFXIVClientStructs.Havok.Common.Base.Math.QsTransform;
 
@@ -70,7 +67,6 @@ public class CamController : IDisposable
     }
 
     private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
-    private static unsafe FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager* SceneCameraManager => FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager.Instance();
     public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0;
     #endregion
 
@@ -98,8 +94,6 @@ public class CamController : IDisposable
     // Hook delegates
     // Verify at: 48 8B C4 44 88 48 ?? 55 56
     private unsafe delegate void GetCameraPositionDelegate(Camera* camera, GameObject* target, Vector3* position, byte swapPerson);
-    // Verify at: 40 53 41 57 48 83 EC ?? 80 A1
-    private unsafe delegate void CameraUpdateDelegate(Camera* camera);
     private readonly Hook<GetCameraPositionDelegate>? getCameraPositionHook;
     private readonly Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
 
@@ -196,11 +190,6 @@ public class CamController : IDisposable
     #endregion
 
     #region First Person Handling
-    private void UpdateFirstPersonCamera()
-    {
-        if (!configuration.RealFirstPerson) return;
-    }
-
     private unsafe bool ShouldDrawGameObjectDetour(CameraBase* thisPtr, GameObject* gameObject, Vector3* sceneCameraPos, Vector3* lookAtVector)
     {
         // Force draw all player and companion in first person with RealFirstPerson enabled
@@ -448,12 +437,6 @@ public class CamController : IDisposable
         return true;
     }
 
-    public static unsafe bool PlayerIsSeated()
-    {
-        var poseType = (EmoteController.PoseType)Marshal.ReadByte((nint)(&((FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20);
-        return poseType == EmoteController.PoseType.Sit;
-    }
-
     private static void CalculateDirectionRange(float rootRotation, int degrees, float offset, out float dirMin, out float dirMax)
     {
         var targetDir = rootRotation - offset;
@@ -544,31 +527,6 @@ public class CamController : IDisposable
         mat.M43 = transform.Position.Z;
 
         return mat;
-    }
-
-    /// <summary>
-    /// Calculates World Pitch and Yaw from a world-space direction vector.
-    /// </summary>
-    public Vector2 GetPitchYawFromDirection(Vector3 lookDir)
-    {
-        // Normalize to ensure consistent trigonometry
-        lookDir = Vector3.Normalize(lookDir);
-
-        // --- Pitch (Elevation) ---
-        // Angle between the LookDir and the Horizon.
-        // Asin returns radians between -PI/2 and +PI/2 (-90 to +90 degrees)
-        // This works perfectly even if the player is upside down.
-        var pitchRad = MathF.Asin(lookDir.Y);
-
-        // --- Yaw (Heading) ---
-        // Rotation around the World Y-axis (Up).
-        // Atan2 handles all 4 quadrants (-PI to +PI)
-        var yawRad = MathF.Atan2(lookDir.X, lookDir.Z);
-
-        // [Optional] Normalize Yaw to 0 -> 2PI range
-        if (yawRad < 0) yawRad += 2 * MathF.PI;
-
-        return new Vector2(pitchRad, yawRad); // Returns Radians
     }
     #endregion
 
@@ -715,8 +673,4 @@ public class Transformation
     {
         return $"Rotation(X={Rotation.X:F3}, Y={Rotation.Y:F3}, Z={Rotation.Z:F3}, W={Rotation.W:F3})";
     }
-}
-
-public class CameraRotationSolver
-{
 }
