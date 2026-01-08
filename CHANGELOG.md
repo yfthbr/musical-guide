@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.1.5"></a>
+## 1.1.5 (2026-01-08)
+
+### Bug Fixes
+
+* finally correct rotational calculations for camera
+* more robust attachment
+* more transformation fixes..
+* re-implement camera position offsets
+
 <a name="1.1.4"></a>
 ## 1.1.4 (2026-01-08)
 
