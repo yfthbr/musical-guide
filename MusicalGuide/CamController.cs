@@ -41,7 +41,8 @@ public class CamController : IDisposable
     private const float DirVEpsilon = 0.0050f; // Small value to avoid an issue with the game flipping camera when looking straight up/down, 1,570796327f ~= 90 degrees
     private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
     private const int NoseBoneIndex = 33; // j_f_uhana
-    private const int FaceBoneIndex = 2; // j_f_face    
+    private const int FaceBoneIndex = 2; // j_f_face
+    private const int HeadBoneIndex = 0; // j_kao
     public const float DegreesToRadians = MathF.PI / 180.0f;
     public const float RadiansToDegrees = 180.0f / MathF.PI;
 
@@ -55,7 +56,7 @@ public class CamController : IDisposable
         set { Cam->Distance = value; }
     }
 
-    public static unsafe float CameraTilt
+    public static unsafe float CameraRoll
     {
         get { return ((ExpandedCamera*)Cam)->Tilt; }
         set { ((ExpandedCamera*)Cam)->Tilt = value; }
@@ -73,7 +74,6 @@ public class CamController : IDisposable
     #endregion
 
     #region Volatile State
-    private volatile bool isDisposed = false;
     private volatile float targetDistance = MaxCameraDistance;
     private volatile bool shouldAdjustDistance = true;
     private volatile bool mouseKeyHeld = false;
@@ -85,6 +85,10 @@ public class CamController : IDisposable
     private float previousFacing = 0f;
     private float previousDirV = 0f;
     private Vector3 nextCameraPosition = new();
+    #endregion
+
+    #region FrameworkRuntimeState
+    private DateTime lastUpdateTime = DateTime.MinValue;
     #endregion
 
     #region Class Lifetime
@@ -124,6 +128,11 @@ public class CamController : IDisposable
 
     private void FrameworkOnUpdateEvent(IFramework framework)
     {
+        if ((DateTime.Now - lastUpdateTime).TotalMilliseconds >= DelayMs)
+        {
+            lastUpdateTime = DateTime.Now;
+            ProcessThrottledFrameworkUpdate();
+        }
         // mouseKeyHeld = MouseDevice
     }
 
@@ -147,16 +156,11 @@ public class CamController : IDisposable
             Cam->DirVMin = DefaultDirVMin;
             Cam->DirVMax = DefaultDirVMax;
         }
-        isDisposed = true;
         configuration.OnConfigurationChanged -= OnConfigurationChanged;
     }
     #endregion
 
     #region Public Methods
-    public void Start()
-    {
-        S.Framework.RunOnFrameworkThread(() => ProcessTick());
-    }
 
     public void SetTargetDistance(float distance)
     {
@@ -166,16 +170,8 @@ public class CamController : IDisposable
     #endregion
 
     #region Internal Processing
-    private void ProcessTick()
-    {
-        if (isDisposed) return;
 
-        ProcessTickInternal();
-
-        S.Framework.RunOnTick(ProcessTick, TimeSpan.FromMilliseconds(DelayMs));
-    }
-
-    private void ProcessTickInternal()
+    private void ProcessThrottledFrameworkUpdate()
     {
         if (!configuration.Enabled) return;
         if (!S.ClientState.IsLoggedIn) return;
@@ -266,7 +262,7 @@ public class CamController : IDisposable
                     Cam->DirVMin = DefaultDirVMin;
                     Cam->DirVMax = DefaultDirVMax;
                     Cam->FoV = DefaultFoV;
-                    CameraTilt = 0;
+                    CameraRoll = 0;
                 }
             }
             previousTickWasFirstPerson = false;
@@ -301,19 +297,69 @@ public class CamController : IDisposable
         });
 
         // Grab the bone's position and euler rotation, since we need to control the camera's pitch and yaw based on head orientation
-        var bone = havokPose->Skeleton->Bones[NoseBoneIndex];
-        var boneTransform = havokPose->AccessBoneModelSpace(NoseBoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
+        var boneTransform = havokPose->AccessBoneModelSpace(HeadBoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
         var boneModelPos = Vector3.Transform(new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z), playerModelMatrix);
+
+        // Calculate rotation of the bone in world space so we can determine where the player's head is facing
         var boneTransformation = new Transformation(boneTransform);
-        var boneWorldRotation = boneTransformation.ToQuaternion() * charaBase->DrawObject.Object.Rotation;
+        var boneWorldRotation = charaBase->DrawObject.Object.Rotation * boneTransformation.ToQuaternion();
 
-        var boneEuler = Vector3.Transform(System.Numerics.Vector3.UnitZ, boneWorldRotation);
-        var worldVectors = GetPitchYawFromDirection(boneEuler);
-        S.Log.Verbose($"World Vectors: Pitch={worldVectors.X} ({worldVectors.X * RadiansToDegrees}), Yaw={worldVectors.Y} ({worldVectors.Y * RadiansToDegrees})");
+        // Apply Coordinate Correction
+        var fixAxes = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, MathF.PI / 2f) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, MathF.PI);
+        var correctedBoneRot = boneWorldRotation * fixAxes;
 
-        var trueYaw = worldVectors.Y + MathF.PI / 2f; // Adjust to match camera yaw reference
-        var truePitch = worldVectors.X;
-        var trueRoll = -boneEuler.Y;
+        // Determine pitch, yaw and roll from bone world rotation
+        var boneFwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, correctedBoneRot);
+        var boneUp = Vector3.Transform(System.Numerics.Vector3.UnitY, correctedBoneRot);
+
+        // Calculate standard yaw and pitch from bone forward vector
+        var flatDist = MathF.Sqrt(boneFwd.X * boneFwd.X + boneFwd.Z * boneFwd.Z);
+        var standardYaw = MathF.Atan2(boneFwd.X, boneFwd.Z);
+        var standardPitch = MathF.Atan2(boneFwd.Y, flatDist);
+
+        // Detect inverted state
+        var qStandard = Quaternion.CreateFromYawPitchRoll(standardYaw, -standardPitch, 0); // Note: Pitch sign might vary by engine, check FFXIV usually requires negation here
+        var calculatedUp = Vector3.Transform(System.Numerics.Vector3.UnitY, qStandard);
+
+        // Compare calculated Up with actual Bone Up. If they point in opposite directions, we are inverted.
+        var dotUp = Vector3.Dot(boneUp, calculatedUp);
+
+        var trueYaw = standardYaw; // Adjust yaw based on character rotation
+        var truePitch = standardPitch;
+        if (dotUp < 0)
+        {
+            // Unwrap Pitch: If we were at 89, we go to 91. 
+            // Math: PI - Pitch (for positive) or -PI - Pitch (for negative)
+            truePitch = (truePitch >= 0) ? (MathF.PI - truePitch) : (-MathF.PI - truePitch);
+
+            // Yaw is also flipped 180 degrees when inverted
+            trueYaw += MathF.PI;
+        }
+
+        // Normalize Yaw to -PI to PI
+        while (trueYaw > MathF.PI) trueYaw -= 2 * MathF.PI;
+        while (trueYaw <= -MathF.PI) trueYaw += 2 * MathF.PI;
+
+        // Remove the Yaw and Pitch rotation from the Bone Rotation to isolate Roll.
+        // We create a rotation representing just the Look Direction (Yaw + Pitch)
+        // Note: FFXIV 'DirV' (Pitch) is typically inverted in quaternion calculation (Negative = Up)
+        var qLook = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, trueYaw) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, -truePitch);
+
+        // The difference between the Look rotation and actual Bone rotation is the Roll
+        // qBone = qLook * qRoll  =>  qRoll = Inverse(qLook) * qBone
+        var qRoll = Quaternion.Invert(qLook) * correctedBoneRot;
+
+        // Extract Roll angle from qRoll (Z-axis rotation)
+        // Using Atan2 on the matrix components of the quaternion
+        // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
+        var trueRoll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
+
+        S.Log.Verbose($"World Vectors: Pitch={truePitch:F3} ({truePitch * RadiansToDegrees:F1}), Yaw={trueYaw:F3} ({trueYaw * RadiansToDegrees:F1}), Roll={trueRoll:F3} ({trueRoll * RadiansToDegrees:F1})");
+        S.Log.Verbose($"Character rotation: X={charaBase->DrawObject.Object.Rotation.X:F3}, Y={charaBase->DrawObject.Object.Rotation.Y:F3}, Z={charaBase->DrawObject.Object.Rotation.Z:F3}, W={charaBase->DrawObject.Object.Rotation.W:F3} - Bone rotation: {boneTransformation}");
+
+        // // Apply configured offsets to virtual bone position
+        // var offset = Vector3.Transform(configuration.FirstPersonOffset, boneWorldRotation);
+        // boneModelPos += offset;
 
         // Begin adjusting camera rotation
 
@@ -329,18 +375,20 @@ public class CamController : IDisposable
         {
             // Apply rotation delta to camera
 
-            // Yaw (Y axis) affects camera DirH
+            // Yaw affects camera DirH
             var diff = RotationalDifference(trueYaw, previousFacing);
             if (Math.Abs(diff) > EulerEpsilon && !mouseKeyHeld) // TODO: implement mouseKeyHeld detection
             {
                 dirH += diff;
+                previousFacing = trueYaw;
             }
 
-            // Pitch (Z axis) affects camera DirV
+            // Pitch affects camera DirV
             diff = RotationalDifference(truePitch, previousHeadPitch);
             if (Math.Abs(diff) > EulerEpsilon)
             {
                 dirV += diff;
+                previousHeadPitch = truePitch;
             }
         }
         else
@@ -349,8 +397,6 @@ public class CamController : IDisposable
             Cam->DirVMax = 2 * MathF.PI;
             previousTickWasFirstPerson = true;
         }
-        previousHeadPitch = truePitch;
-        previousFacing = trueYaw;
 
         var straightUp = 90 * DegreesToRadians;
         var straightDown = -90 * DegreesToRadians;
@@ -378,29 +424,18 @@ public class CamController : IDisposable
         // Apply tilt to camera
         var distFromStraightH = Math.Abs(RotationalDifference(dirH, trueYaw));
         var distFromStraightV = Math.Abs(RotationalDifference(dirV, truePitch));
-        var tiltFactor = (1f - (Math.Max(distFromStraightH, distFromStraightV) / (MathF.PI / 2f))) * 0.5f;
-        CameraTilt = trueRoll * tiltFactor;
+        var tiltFactor = 1f - (Math.Max(distFromStraightH, distFromStraightV) / (MathF.PI / 2f));
+        CameraRoll = trueRoll * tiltFactor;
 
         if (isFlippedByGame)
         {
-            CameraTilt = -(trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
+            CameraRoll = (trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
         }
 
         // Apply FOV and rotational changes
         Cam->FoV = configuration.FirstPersonFieldOfView / 100f;
         Cam->DirV = RotateDir(dirV);
         Cam->DirH = dirH;
-
-        // S.Log.Verbose($"@@@@@@@@@ Facing: {trueYaw:F2} ({trueYaw * RadiansToDegrees:F2}) - Pitch: {truePitch:F2} ({truePitch * RadiansToDegrees:F2}) - Roll: {boneEuler.Y:F2} ({boneEuler.Y * RadiansToDegrees:F2})");
-        S.Log.Verbose($"Tiltfactor: {tiltFactor:F2} - CameraTilt: {CameraTilt:F2} ({CameraTilt * RadiansToDegrees:F2}) - DistFromStraightH: {distFromStraightH:F2} - DistFromStraightV: {distFromStraightV:F2}");
-        // S.Log.Verbose($"DirV: {Cam->DirV:F2} ({Cam->DirV * RadiansToDegrees:F2}) - DirH: {Cam->DirH:F2} ({Cam->DirH * RadiansToDegrees:F2}) - Tilt: {CameraTilt:F2} ({CameraTilt * RadiansToDegrees:F2})");
-        // S.Log.Verbose($"DirV Limits: Min={Cam->DirVMin:F2} ({Cam->DirVMin * RadiansToDegrees:F2}) - Max={Cam->DirVMax:F2} ({Cam->DirVMax * RadiansToDegrees:F2})");
-        // S.Log.Verbose($"DirH Limits: Min={dirhMin:F2} ({dirhMin * RadiansToDegrees:F2}) - Max={dirhMax:F2} ({dirhMax * RadiansToDegrees:F2})");
-        // S.Log.Verbose($"IsFlipped: Game={isFlippedByGame} - Bone={isFlippedByBone} - CamIsFlipped={IsCameraFlipped}");
-
-        // Apply configured offsets
-        // var offset = Vector3.Transform(configuration.FirstPersonOffset, Matrix4x4.CreateFromYawPitchRoll(trueFacing, truePitch, boneEuler.X));
-        // boneModelPos += offset;
 
         // In first person with RealFirstPerson enabled, override position
         nextCameraPosition = boneModelPos;
@@ -675,7 +710,7 @@ public class Transformation
 
     public override string ToString()
     {
-        return $"Quaternion2(X={Rotation.X:F3}, Y={Rotation.Y:F3}, Z={Rotation.Z:F3}, W={Rotation.W:F3})";
+        return $"Rotation(X={Rotation.X:F3}, Y={Rotation.Y:F3}, Z={Rotation.Z:F3}, W={Rotation.W:F3})";
     }
 }
 

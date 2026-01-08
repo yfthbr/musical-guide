@@ -39,7 +39,6 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
         S.Framework.Update += FrameworkOnUpdateEvent;
 
-        Cam.Start();
 #if DEBUG
         S.Log.Info("Musical Guide loaded in DEBUG mode.");
         ConfigWindow.IsOpen = true;

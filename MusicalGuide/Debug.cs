@@ -49,7 +49,7 @@ unsafe static class Debug
 
             S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String} Rotation: {boneEuler}, Position: {boneModelPos} -> Transformed Position: {transformedPos} - Character Rotation: {charaBase->Rotation}");
         }
-        S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation} - CameraTilt {CamController.CameraTilt}");
+        S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation} - CameraTilt {CamController.CameraRoll}");
         S.Log.Info($"Status: IsSeated: {Marshal.ReadByte((nint)(&((Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20)}");
     }
 }
