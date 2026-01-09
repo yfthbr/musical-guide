@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.2.5"></a>
+## 1.2.5 (2026-01-09)
+
+### Bug Fixes
+
+* enable plugin flag should impact first person too
+
 <a name="1.2.4"></a>
 ## 1.2.4 (2026-01-08)
 
