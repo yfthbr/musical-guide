@@ -52,16 +52,23 @@ public class ConfigWindow : Window, IDisposable
             ImGui.Spacing();
 
             var realFirstPerson = configuration.RealFirstPerson;
-            if (ImGui.Checkbox("Enable Real First Person", ref realFirstPerson))
+            if (ImGui.Checkbox("Enable real first person", ref realFirstPerson))
             {
                 configuration.RealFirstPerson = realFirstPerson;
                 configuration.Save();
             }
 
             var reducedMotion = configuration.ReducedMotion;
-            if (ImGui.Checkbox("Enable Reduced Motion (no rotation follow)", ref reducedMotion))
+            if (ImGui.Checkbox("Reduce motion (no rotation follow, camera allowed to rotate 360 degrees, recommended for gameplay)", ref reducedMotion))
             {
                 configuration.ReducedMotion = reducedMotion;
+                configuration.Save();
+            }
+
+            var removeRoll = configuration.RemoveRollInFirstPerson;
+            if (ImGui.Checkbox("Remove camera roll in first person (enable, if you get motion sickness)", ref removeRoll))
+            {
+                configuration.RemoveRollInFirstPerson = removeRoll;
                 configuration.Save();
             }
 
@@ -72,35 +79,35 @@ public class ConfigWindow : Window, IDisposable
                 if (ImGui.CollapsingHeader("First Person Adjustments", ImGuiTreeNodeFlags.Framed))
                 {
                     var fov = configuration.FirstPersonFieldOfView;
-                    if (ImGui.SliderInt("First Person Field of View", ref fov, CamController.MinFoV, CamController.MaxFoV, "%d", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderInt("Field of view in first person", ref fov, CamController.MinFoV, CamController.MaxFoV, "%d", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonFieldOfView = fov;
                         configuration.Save();
                     }
 
                     var headOffsetForward = configuration.FirstPersonHeadOffsetForward;
-                    if (ImGui.SliderFloat("Camera Offset Forward", ref headOffsetForward, -0.05f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderFloat("Camera offset forward", ref headOffsetForward, -0.05f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetForward = headOffsetForward;
                         configuration.Save();
                     }
 
                     var headOffsetUpward = configuration.FirstPersonHeadOffsetUpward;
-                    if (ImGui.SliderFloat("Camera Offset Upward", ref headOffsetUpward, -0.15f, 0.25f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderFloat("Camera offset up", ref headOffsetUpward, -0.15f, 0.25f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetUpward = headOffsetUpward;
                         configuration.Save();
                     }
 
                     var headOffsetSideward = configuration.FirstPersonHeadOffsetSideward;
-                    if (ImGui.SliderFloat("Camera Offset Sideward", ref headOffsetSideward, -0.15f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderFloat("Camera offset sideways", ref headOffsetSideward, -0.15f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetSideward = headOffsetSideward;
                         configuration.Save();
                     }
 
                     var headRotationPitch = configuration.FirstPersonHeadRotationPitch;
-                    if (ImGui.SliderInt("Head Rotation Pitch", ref headRotationPitch, -10, 40, "%d", ImGuiSliderFlags.AlwaysClamp))
+                    if (ImGui.SliderInt("Head rotation pitch adjustment (if your face bone is already rotated from standard)", ref headRotationPitch, -10, 40, "%d", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadRotationPitch = headRotationPitch;
                         configuration.Save();
@@ -121,7 +128,7 @@ public class ConfigWindow : Window, IDisposable
             ImGui.Spacing();
 
             var thirdPersonControl = configuration.ThirdPersonControl;
-            if (ImGui.Checkbox("Enable Third Person Camera Control", ref thirdPersonControl))
+            if (ImGui.Checkbox("Enable third person camera control", ref thirdPersonControl))
             {
                 configuration.ThirdPersonControl = thirdPersonControl;
                 configuration.Save();

@@ -15,13 +15,14 @@ public class Configuration : IPluginConfiguration
     public bool UseFurtherCameraForLargerMounts { get; set; } = true;
 
     public bool RealFirstPerson { get; set; } = true;
-    public bool ReducedMotion { get; set; } = false;
+    public bool ReducedMotion { get; set; } = true;
+    public bool RemoveRollInFirstPerson { get; set; } = false;
     public float FirstPersonHeadOffsetForward { get; set; } = 0.03f;
     public float FirstPersonHeadOffsetUpward { get; set; } = 0.0f;
     public float FirstPersonHeadOffsetSideward { get; set; } = 0.0f;
     public int FirstPersonHeadRotationPitch { get; set; } = 25;
     public int FirstPersonFieldOfView { get; set; } = 78;
-    public bool ThirdPersonControl { get; set; } = true;
+    public bool ThirdPersonControl { get; set; } = false;
 
     [Newtonsoft.Json.JsonIgnore] // 0.1f and 0.12f are empirical adjustments to better match eye position, based on female miqo'te
     public FFXIVClientStructs.FFXIV.Common.Math.Vector3 FirstPersonOffset => new(FirstPersonHeadOffsetSideward, FirstPersonHeadOffsetUpward + 0.1f, FirstPersonHeadOffsetForward + 0.12f);

@@ -21,7 +21,7 @@ public class CamController : IDisposable
     // Minimum allowed camera zoom in the normal game
     public const float MinCameraDistance = 1.5f;
 
-    public const int MinFoV = 60;
+    public const int MinFoV = 78; // Lower than 78 breaks scrolling for camera transitions
     public const int MaxFoV = 95;
 
     // Maximum distance change per delay tick
@@ -36,7 +36,7 @@ public class CamController : IDisposable
     private const float DefaultDirVMin = -85 * (MathF.PI / 180f);
     private const float DefaultDirVMax = 45 * (MathF.PI / 180f);
     private const float DefaultFoV = 0.78f;
-    private const float DirVEpsilon = 0.0050f; // Small value to avoid an issue with the game flipping camera when looking straight up/down, 1,570796327f ~= 90 degrees
+    private const float DirVEpsilon = 0.0020f; // Small value to avoid an issue with the game flipping camera when looking straight up/down, 1,570796327f ~= 90 degrees
     private const float EulerEpsilon = 0.001f; // Adjust to avoid camera jittering when idle
     private const int NoseBoneIndex = 33; // j_f_uhana
     private const int FaceBoneIndex = 2; // j_f_face
@@ -60,14 +60,8 @@ public class CamController : IDisposable
         set { ((ExpandedCamera*)Cam)->Tilt = value; }
     }
 
-    public static unsafe byte IsCameraFlipped
-    {
-        get { return ((ExpandedCamera*)Cam)->IsFlipped; }
-        set { ((ExpandedCamera*)Cam)->IsFlipped = value; }
-    }
-
     private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
-    public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0;
+    public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0 && ((ExpandedCamera*)Cam)->Transition == 0f;
     #endregion
 
     #region Volatile State
@@ -77,8 +71,10 @@ public class CamController : IDisposable
 
     #region FirstPersonState
     private volatile bool previousTickWasFirstPerson = false;
+    private volatile bool exitingFirstPerson = false;
     private float previousHeadPitch = 0f;
     private float previousFacing = 0f;
+    private float cachedDirH = 0f;
     private float previousDirV = 0f;
     private Vector3 nextCameraPosition = new();
     #endregion
@@ -243,6 +239,31 @@ public class CamController : IDisposable
     {
         if (!PlayerDrawObjectExists() || S.ClientState.IsGPosing)
             return false;
+
+        // Lock facing during transitions
+        if (configuration.RealFirstPerson && ((ExpandedCamera*)Cam)->Transition > 0f)
+        {
+            // 3rd person and first person have 180 degree difference in DirH, this helps us face the right way when exiting first person
+            if (previousTickWasFirstPerson)
+            {
+                previousTickWasFirstPerson = false;
+                exitingFirstPerson = true;
+            }
+            if (exitingFirstPerson)
+            {
+                // Transition ticks from 0.5 to 0, progress goes from 1 to 0
+                var wasLookingLeft = RotationalDifference(previousFacing, cachedDirH) < 0;
+                var progress = ((ExpandedCamera*)Cam)->Transition / 0.5f;
+                Cam->DirH = cachedDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
+            }
+            return false;
+        }
+
+        exitingFirstPerson = false;
+
+        // Keep a rolling cache of DirH for when we exit first person
+        cachedDirH = Cam->DirH;
+
         if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
         {
             if (previousTickWasFirstPerson)
@@ -253,6 +274,7 @@ public class CamController : IDisposable
                     Cam->DirVMin = DefaultDirVMin;
                     Cam->DirVMax = DefaultDirVMax;
                     Cam->FoV = DefaultFoV;
+                    Cam->DirH = cachedDirH;
                     CameraRoll = 0;
                 }
             }
@@ -344,7 +366,7 @@ public class CamController : IDisposable
         // Using Atan2 on the matrix components of the quaternion
         // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
         // Set to 0 on reduced motion
-        var trueRoll = configuration.ReducedMotion ? 0f : MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
+        var trueRoll = configuration.RemoveRollInFirstPerson ? 0f : MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
 
         // // Apply configured offsets to virtual bone position
         var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
@@ -384,9 +406,17 @@ public class CamController : IDisposable
         }
         else
         {
+            // Derestrict camera vertical limits
             Cam->DirVMin = -2 * MathF.PI;
             Cam->DirVMax = 2 * MathF.PI;
+
+            // Make sure we face the same way our character does when entering first person
+            cachedDirH = dirH = trueYaw;
+            previousFacing = trueYaw;
+            dirV = truePitch;
+            previousHeadPitch = truePitch;
             previousTickWasFirstPerson = true;
+            S.Log.Debug($"Entered first person, initializing camera vertical limits and orientation.");
         }
 
         var straightUp = 90 * DegreesToRadians;
@@ -622,10 +652,10 @@ internal class NotReadyException : Exception
 [StructLayout(LayoutKind.Explicit, Size = 0x2C0)]
 internal struct ExpandedCamera
 {
-    [FieldOffset(0x170)] public float Tilt;
-    [FieldOffset(0x180)] public int Mode;
-    [FieldOffset(0x184)] public int ControlType;
-    [FieldOffset(0x1F4)] public byte IsFlipped;
+    [FieldOffset(0x170)] public float Tilt; // Roll axis of the camera in radians
+    [FieldOffset(0x180)] public int Mode; // 0 = first person
+    [FieldOffset(0x184)] public int ControlType; // 0 = first person, 1/2 legacy/standard 3rd person
+    [FieldOffset(0x1A0)] public float Transition; // Normally counts down from 0.5 to 0 during transitions between 1st and 3rd person
 }
 
 // https://github.com/Etheirys/Brio/blob/main/Brio/Game/Actor/Interop/BrioCharacterBase.cs#L7
