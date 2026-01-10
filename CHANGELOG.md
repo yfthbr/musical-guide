@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.2.6"></a>
+## 1.2.6 (2026-01-10)
+
+### Bug Fixes
+
+* always show third person settings
+
 <a name="1.2.5"></a>
 ## 1.2.5 (2026-01-09)
 
