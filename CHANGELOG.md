@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.2.7"></a>
+## 1.2.7 (2026-01-10)
+
+### Bug Fixes
+
+* camera no longer spins massively during transitions
+
 <a name="1.2.6"></a>
 ## 1.2.6 (2026-01-10)
 
