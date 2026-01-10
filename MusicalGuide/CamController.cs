@@ -259,14 +259,12 @@ public class CamController : IDisposable
             return false;
         }
 
-        exitingFirstPerson = false;
-
         // Keep a rolling cache of DirH for when we exit first person
         cachedDirH = Cam->DirH;
 
         if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
         {
-            if (previousTickWasFirstPerson)
+            if (exitingFirstPerson || previousTickWasFirstPerson)
             {
                 S.Log.Debug("Exited first person, resetting camera vertical limits.");
                 unsafe
@@ -274,13 +272,14 @@ public class CamController : IDisposable
                     Cam->DirVMin = DefaultDirVMin;
                     Cam->DirVMax = DefaultDirVMax;
                     Cam->FoV = DefaultFoV;
-                    Cam->DirH = cachedDirH;
                     CameraRoll = 0;
                 }
             }
             previousTickWasFirstPerson = false;
             return false;
         }
+
+        exitingFirstPerson = false;
 
         var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawObject;
         if ((nint)charaBase == 0)
