@@ -274,6 +274,7 @@ public class CamController : IDisposable
                     Cam->FoV = DefaultFoV;
                     CameraRoll = 0;
                 }
+                exitingFirstPerson = false;
             }
             previousTickWasFirstPerson = false;
             return false;
