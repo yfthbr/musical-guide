@@ -111,10 +111,7 @@ public class ConfigWindow : Window, IDisposable
             ImGui.Spacing();
         }
 
-        if (!configuration.UseAutomaticDistance)
-        {
-            DrawCameraDistanceSliders();
-        }
+        DrawCameraDistanceSliders();
     }
 
     private void DrawCameraDistanceSliders()
@@ -130,13 +127,6 @@ public class ConfigWindow : Window, IDisposable
                 configuration.Save();
             }
 
-            var automatic = configuration.UseAutomaticDistance;
-            if (ImGui.Checkbox("Remember previously used distances", ref automatic))
-            {
-                configuration.UseAutomaticDistance = automatic;
-                configuration.Save();
-            }
-
             var useFurtherCameraForLargerMounts = configuration.UseFurtherCameraForLargerMounts;
             if (ImGui.Checkbox("Use further camera for larger mounts", ref useFurtherCameraForLargerMounts))
             {
@@ -144,17 +134,27 @@ public class ConfigWindow : Window, IDisposable
                 configuration.Save();
             }
 
-            ImGui.Spacing();
+            ImGui.Separator();
 
-            foreach (State val in Enum.GetValues(typeof(State)))
+            var automatic = configuration.UseAutomaticDistance;
+            if (ImGui.Checkbox("Remember previously used distances", ref automatic))
             {
-                var name = Enum.GetName(typeof(State), val)!;
-                configuration.Distances.TryGetValue(val, out var dist);
-                if (dist == 0) dist = 10f;
-                if (ImGui.SliderFloat(name, ref dist, CamController.MinCameraDistance, CamController.MaxCameraDistance, "%.1f"))
+                configuration.UseAutomaticDistance = automatic;
+                configuration.Save();
+            }
+
+            if (!configuration.UseAutomaticDistance)
+            {
+                foreach (State val in Enum.GetValues(typeof(State)))
                 {
-                    configuration.SetManualDistance(val, dist);
-                    cam.SetTargetDistance(dist);
+                    var name = Enum.GetName(typeof(State), val)!;
+                    configuration.Distances.TryGetValue(val, out var dist);
+                    if (dist == 0) dist = 10f;
+                    if (ImGui.SliderFloat(name, ref dist, CamController.MinCameraDistance, CamController.MaxCameraDistance, "%.1f"))
+                    {
+                        configuration.SetManualDistance(val, dist);
+                        cam.SetTargetDistance(dist);
+                    }
                 }
             }
 
