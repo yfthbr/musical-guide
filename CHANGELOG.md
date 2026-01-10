@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.2.9"></a>
+## 1.2.9 (2026-01-10)
+
+### Bug Fixes
+
+* restore ability to scroll into first person
+
 <a name="1.2.8"></a>
 ## 1.2.8 (2026-01-10)
 
