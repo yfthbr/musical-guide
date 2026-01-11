@@ -74,7 +74,6 @@ public class CamController : IDisposable
     private volatile bool exitingFirstPerson = false;
     private float previousHeadPitch = 0f;
     private float previousFacing = 0f;
-    private float previousCharacterFacing = 0f;
     private float cachedDirH = 0f;
     private float previousDirV = 0f;
     private Vector3 nextCameraPosition = new();
@@ -253,7 +252,7 @@ public class CamController : IDisposable
             if (exitingFirstPerson)
             {
                 // Transition ticks from 0.5 to 0, progress goes from 1 to 0
-                var wasLookingLeft = RotationalDifference(previousCharacterFacing, cachedDirH) < 0;
+                var wasLookingLeft = RotationalDifference(previousFacing, cachedDirH) < 0;
                 var progress = ((ExpandedCamera*)Cam)->Transition / 0.5f;
                 Cam->DirH = cachedDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
             }
@@ -465,7 +464,6 @@ public class CamController : IDisposable
         nextCameraPosition = boneModelPos;
 
         previousDirV = Cam->DirV;
-        previousCharacterFacing = S.ObjectTable.LocalPlayer!.Rotation;
 
         return true;
     }
