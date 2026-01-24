@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.0"></a>
+## 1.3.0 (2026-01-24)
+
+### Features
+
+* reduced motion in combat/instances
+
+### Bug Fixes
+
+* account for head pitch and yaw in relation to camera in determining appropriate camera tilt
+* camera doing a spin when exiting first person in some poses
+* shouldDrawGameObjectDetour to only use distance
+
 <a name="1.2.9"></a>
 ## 1.2.9 (2026-01-10)
 
