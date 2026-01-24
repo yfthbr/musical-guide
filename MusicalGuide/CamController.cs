@@ -193,20 +193,10 @@ public class CamController : IDisposable
         if (!firstPersonModificationActive)
             goto Original;
 
-        var isLocalPlayerOrCompanion = (nint)gameObject == S.ObjectTable.LocalPlayer?.Address || (nint)gameObject == S.ObjectTable[1]?.Address;
-        if (!isLocalPlayerOrCompanion)
+        if ((nint)gameObject == nint.Zero || (nint)sceneCameraPos == nint.Zero)
             goto Original;
 
-        var objectIsGoodKind = gameObject->ObjectKind == ObjectKind.Pc
-            || gameObject->ObjectKind == ObjectKind.Companion
-            || gameObject->ObjectKind == ObjectKind.BattleNpc
-            || gameObject->ObjectKind == ObjectKind.Aetheryte
-            || gameObject->ObjectKind == ObjectKind.Retainer
-            || gameObject->ObjectKind == ObjectKind.Mount;
-        if (!objectIsGoodKind)
-            goto Original;
-
-        var closeObject = Vector3.Distance(gameObject->Position, *sceneCameraPos) < 3f;
+        var closeObject = Vector3.Distance(gameObject->Position, *sceneCameraPos) < 4f;
         if (!closeObject)
             goto Original;
 
