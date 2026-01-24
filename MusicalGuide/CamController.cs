@@ -8,7 +8,6 @@ using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Graphics;
 using FFXIVClientStructs.FFXIV.Common.Math;
-using FFXIVClientStructs.Havok.Common.Base.Math.QsTransform;
 
 namespace MusicalGuide;
 
@@ -22,7 +21,7 @@ public class CamController : IDisposable
     public const float MinCameraDistance = 1.5f;
 
     public const int MinFoV = 78; // Lower than 78 breaks scrolling for camera transitions
-    public const int MaxFoV = 95;
+    public const int MaxFoV = 112;
 
     // Maximum distance change per delay tick
     private const float MaxDiff = 0.5f;
@@ -314,8 +313,7 @@ public class CamController : IDisposable
         var boneModelPos = Vector3.Transform(new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z), playerModelMatrix);
 
         // Calculate rotation of the bone in world space so we can determine where the player's head is facing
-        var boneTransformation = new Transformation(boneTransform);
-        var boneWorldRotation = charaBase->DrawObject.Object.Rotation * boneTransformation.ToQuaternion();
+        var boneWorldRotation = charaBase->DrawObject.Object.Rotation * new Quaternion(boneTransform->Rotation.X, boneTransform->Rotation.Y, boneTransform->Rotation.Z, boneTransform->Rotation.W);
 
         // Apply Coordinate Correction
         var fixAxes = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, MathF.PI / 2f) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, MathF.PI);
@@ -366,7 +364,7 @@ public class CamController : IDisposable
         // Using Atan2 on the matrix components of the quaternion
         // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
         // Set to 0 on reduced motion
-        var trueRoll = configuration.RemoveRollInFirstPerson ? 0f : MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
+        var trueRoll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
 
         // // Apply configured offsets to virtual bone position
         var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
@@ -444,15 +442,25 @@ public class CamController : IDisposable
         if (!configuration.ReducedMotion)
             dirH = ClampRotational(dirH, dirhMin, dirhMax);
 
-        // Apply tilt to camera
-        var distFromStraightH = Math.Abs(RotationalDifference(dirH, trueYaw));
-        var distFromStraightV = Math.Abs(RotationalDifference(dirV, truePitch));
-        var tiltFactor = 1f - (Math.Max(distFromStraightH, distFromStraightV) / (MathF.PI / 2f));
-        CameraRoll = trueRoll * tiltFactor;
-
-        if (isFlippedByGame)
+        // Apply tilt to camera, accounting for how far we are from looking straight ahead and how much the head is pitched
+        if (configuration.RemoveRollInFirstPerson)
         {
-            CameraRoll = (trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
+            CameraRoll = isFlippedByGame ? (float)Math.PI : 0f;
+        }
+        else
+        {
+            var distFromStraightH = RotationalDifference(dirH, trueYaw);
+            var tiltFactor = 1f - (Math.Abs(distFromStraightH) / (MathF.PI / 2f));
+            var pitchTiltFactor = -distFromStraightH / (MathF.PI / 2f);
+            if (pitchTiltFactor > 1f) pitchTiltFactor = 1;
+            else if (pitchTiltFactor < -1f) pitchTiltFactor = -1;
+            var pitchTilt = truePitch * pitchTiltFactor;
+            CameraRoll = (trueRoll * tiltFactor) + pitchTilt;
+
+            if (isFlippedByGame)
+            {
+                CameraRoll = (trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
+            }
         }
 
         // Apply FOV and rotational changes
@@ -666,42 +674,4 @@ public struct ExpandedCharacterBase
     [FieldOffset(0x2A4)] public float ScaleFactor2;
 
     public readonly float ScaleFactor => ScaleFactor1 * ScaleFactor2;
-}
-
-public class Transformation
-{
-    public Vector3 Position = Vector3.Zero;
-    public Vector3 Scale = Vector3.Zero;
-    public Quaternion Rotation = Quaternion.Identity;
-
-    public unsafe Transformation(hkQsTransformf* boneTransform)
-    {
-        Rotation = new Quaternion(boneTransform->Rotation.X, boneTransform->Rotation.Y, boneTransform->Rotation.Z, boneTransform->Rotation.W);
-        Position = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
-        Scale = new Vector3(boneTransform->Scale.X, boneTransform->Scale.Y, boneTransform->Scale.Z);
-    }
-
-    public Vector3 ToEuler()
-    {
-        var yaw = MathF.Atan2(2.0f * (Rotation.Y * Rotation.W + Rotation.X * Rotation.Z), 1.0f - 2.0f * (Rotation.X * Rotation.X + Rotation.Y * Rotation.Y));
-        var pitch = MathF.Asin(2.0f * (Rotation.X * Rotation.W - Rotation.Y * Rotation.Z));
-        var roll = MathF.Atan2(2.0f * (Rotation.X * Rotation.Y + Rotation.Z * Rotation.W), 1.0f - 2.0f * (Rotation.X * Rotation.X + Rotation.Z * Rotation.Z));
-
-        return new Vector3(yaw, pitch, roll);
-    }
-
-    public Quaternion ToQuaternion()
-    {
-        return Rotation;
-    }
-
-    // public Quaternion2 Multiply(Matrix4x4 matrix)
-    // {
-    //     var q = Quaternion.CreateFromRotationMatrix(matrix);
-    // }
-
-    public override string ToString()
-    {
-        return $"Rotation(X={Rotation.X:F3}, Y={Rotation.Y:F3}, Z={Rotation.Z:F3}, W={Rotation.W:F3})";
-    }
 }

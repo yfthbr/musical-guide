@@ -1,12 +1,11 @@
 using System.Runtime.InteropServices;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
-using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Common.Math;
 
 namespace MusicalGuide;
 
-unsafe static class Debug
+internal static unsafe class Debug
 {
     public static void PrintDebug(Configuration configuration)
     {
@@ -42,12 +41,10 @@ unsafe static class Debug
             var bone = havokPose->Skeleton->Bones[BONE_INDEX];
             var boneTransform = havokPose->AccessBoneModelSpace(BONE_INDEX, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.Propagate);
             var boneModelPos = new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z);
-            var boneQuaternion = new Transformation(boneTransform);
-            var boneEuler = boneQuaternion.ToEuler();
 
             var transformedPos = Vector3.Transform(boneModelPos + configuration.FirstPersonOffset, Matrix4x4.CreateFromQuaternion(charaBase->Rotation));
 
-            S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String} Rotation: {boneEuler}, Position: {boneModelPos} -> Transformed Position: {transformedPos} - Character Rotation: {charaBase->Rotation}");
+            S.Log.Info($"Pose {POSE_INDEX}: Bone {bone.Name.String}, Position: {boneModelPos} -> Transformed Position: {transformedPos} - Character Rotation: {charaBase->Rotation}");
         }
         S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation} - CameraTilt {CamController.CameraRoll}");
         S.Log.Info($"Status: IsSeated: {Marshal.ReadByte((nint)(&((Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20)}");

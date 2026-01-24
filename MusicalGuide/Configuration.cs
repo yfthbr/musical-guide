@@ -20,7 +20,7 @@ public class Configuration : IPluginConfiguration
     public float FirstPersonHeadOffsetForward { get; set; } = 0.03f;
     public float FirstPersonHeadOffsetUpward { get; set; } = 0.0f;
     public float FirstPersonHeadOffsetSideward { get; set; } = 0.0f;
-    public int FirstPersonHeadRotationPitch { get; set; } = 25;
+    public int FirstPersonHeadRotationPitch { get; set; } = 0;
     public int FirstPersonFieldOfView { get; set; } = 78;
     public bool ThirdPersonControl { get; set; } = false;
 
