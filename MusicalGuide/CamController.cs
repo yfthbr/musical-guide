@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
@@ -269,6 +270,8 @@ public class CamController : IDisposable
             return false;
         }
 
+        var reducedMotion = configuration.ReducedMotion || (configuration.ReducedMotionInCombat && S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty));
+
         exitingFirstPerson = false;
 
         var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawObject;
@@ -378,7 +381,7 @@ public class CamController : IDisposable
             var diff = RotationalDifference(trueYaw, previousFacing);
             if (Math.Abs(diff) > EulerEpsilon)
             {
-                if (!configuration.ReducedMotion && !InputManager.IsRightMouseDown())
+                if (!reducedMotion && !InputManager.IsRightMouseDown())
                     dirH += diff;
                 previousFacing = trueYaw;
             }
@@ -387,7 +390,7 @@ public class CamController : IDisposable
             diff = RotationalDifference(truePitch, previousHeadPitch);
             if (Math.Abs(diff) > EulerEpsilon)
             {
-                if (!configuration.ReducedMotion)
+                if (!reducedMotion)
                     dirV += diff;
                 previousHeadPitch = truePitch;
             }
@@ -411,7 +414,7 @@ public class CamController : IDisposable
         var straightDown = -90 * DegreesToRadians;
 
         // Clamp DirV before singularity check
-        if (!configuration.ReducedMotion)
+        if (!reducedMotion)
             dirV = ClampRotational(dirV, dirvMin, dirvMax);
 
         // Jump over the singularity at straight up/down
@@ -429,11 +432,11 @@ public class CamController : IDisposable
         // Handle DirH clamping
         CalculateDirectionRange(trueYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
         dirH = RotateDir(dirH);
-        if (!configuration.ReducedMotion)
+        if (!reducedMotion)
             dirH = ClampRotational(dirH, dirhMin, dirhMax);
 
         // Apply tilt to camera, accounting for how far we are from looking straight ahead and how much the head is pitched
-        if (configuration.RemoveRollInFirstPerson)
+        if (configuration.RemoveRollInFirstPerson || (configuration.ReducedMotionInCombat && S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty)))
         {
             CameraRoll = isFlippedByGame ? (float)Math.PI : 0f;
         }

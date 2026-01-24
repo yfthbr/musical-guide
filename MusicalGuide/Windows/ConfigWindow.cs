@@ -72,6 +72,13 @@ public class ConfigWindow : Window, IDisposable
                 configuration.Save();
             }
 
+            var reducedMotionInCombat = configuration.ReducedMotionInCombat;
+            if (ImGui.Checkbox("Reduce motion in combat and instanced content", ref reducedMotionInCombat))
+            {
+                configuration.ReducedMotionInCombat = reducedMotionInCombat;
+                configuration.Save();
+            }
+
             ImGui.Spacing();
 
             using (ImRaii.PushIndent())

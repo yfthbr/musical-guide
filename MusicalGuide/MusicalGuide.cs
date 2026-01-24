@@ -69,17 +69,16 @@ public sealed partial class MusicalGuide : IDalamudPlugin
         EnsureIsOnFramework();
         if (!S.ClientState.IsLoggedIn || S.ObjectTable.LocalPlayer == null) return;
 
-        var conditions = S.Condition.AsReadOnlySet();
         var newState = State.OutOfCombat;
-        if (conditions.Contains(ConditionFlag.Mounted) || conditions.Contains(ConditionFlag.RidingPillion))
+        if (S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion))
         {
             newState = State.Mounted;
         }
-        else if (conditions.Contains(ConditionFlag.InCombat) || conditions.Contains(ConditionFlag.BoundByDuty))
+        else if (S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty))
         {
             newState = State.InCombat;
         }
-        else if (conditions.Contains(ConditionFlag.Crafting) || conditions.Contains(ConditionFlag.ExecutingCraftingAction))
+        else if (S.Condition.Any(ConditionFlag.Crafting, ConditionFlag.ExecutingCraftingAction))
         {
             newState = State.Crafting;
         }
