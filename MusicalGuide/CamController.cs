@@ -78,8 +78,12 @@ public class CamController : IDisposable
     private volatile bool exitingFirstPerson = false;
     private float previousHeadPitch = 0f;
     private float previousFacing = 0f;
-    private float cachedDirH = 0f;
+    private float previousDirH = 0f;
     private float previousDirV = 0f;
+    private float previousRealDirH = 0f;
+    private float previousRealDirV = 0f;
+    private float realDirH = 0f;
+    private float realDirV = 0f;
     private Vector3 nextCameraPosition = new();
     #endregion
 
@@ -246,15 +250,18 @@ public class CamController : IDisposable
             if (exitingFirstPerson)
             {
                 // Transition ticks from 0.5 to 0, progress goes from 1 to 0
-                var wasLookingLeft = RotationalDifference(previousFacing, cachedDirH) < 0;
+                var wasLookingLeft = RotationalDifference(previousFacing, previousDirH) < 0;
                 var progress = ((ExpandedCamera*)Cam)->Transition / 0.5f;
-                Cam->DirH = cachedDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
+                Cam->DirH = previousDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
             }
             return false;
         }
 
+        var dirHDiff = RotationalDifference(Cam->DirH, previousRealDirH);
+        var dirVDiff = RotationalDifference(Cam->DirV, previousRealDirV);
+
         // Keep a rolling cache of DirH for when we exit first person
-        cachedDirH = Cam->DirH;
+        previousDirH = Cam->DirH;
 
         if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
         {
@@ -361,7 +368,6 @@ public class CamController : IDisposable
         // Extract Roll angle from qRoll (Z-axis rotation)
         // Using Atan2 on the matrix components of the quaternion
         // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
-        // Set to 0 on reduced motion
         var trueRoll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
 
         // // Apply configured offsets to virtual bone position
@@ -370,10 +376,8 @@ public class CamController : IDisposable
 
         // Begin adjusting camera rotation
 
-        var dirV = Cam->DirV;
-        var dirH = Cam->DirH;
-
-        dirV = dirV % (2 * MathF.PI); // keep DirV in reasonable range to avoid camera flipping issues
+        var dirV = realDirV + dirVDiff;
+        var dirH = realDirH + dirHDiff;
 
         // Determine DirV and DirH limits
         CalculateDirectionRange(truePitch, DirVMaxDeg, configuration.FirstPersonHeadRotationPitch * DegreesToRadians, out var dirvMin, out var dirvMax);
@@ -407,13 +411,24 @@ public class CamController : IDisposable
             Cam->DirVMax = 2 * MathF.PI;
 
             // Make sure we face the same way our character does when entering first person
-            cachedDirH = dirH = trueYaw;
+            previousDirH = dirH = trueYaw;
+            realDirH = trueYaw;
             previousFacing = trueYaw;
             dirV = truePitch;
+            realDirV = truePitch;
             previousHeadPitch = truePitch;
             previousTickWasFirstPerson = true;
             S.Log.Debug($"Entered first person, initializing camera vertical limits and orientation.");
         }
+
+        // Keep DirV in reasonable range to avoid camera flipping issues
+        dirV = dirV % (2 * MathF.PI);
+        if (dirV > MathF.PI)
+            dirV -= 2 * MathF.PI;
+        else if (dirV < -MathF.PI)
+            dirV += 2 * MathF.PI;
+
+        S.Log.Verbose($"DirV before clamp: {dirV * RadiansToDegrees:F2} (Min: {dirvMin * RadiansToDegrees:F2}, Max: {dirvMax * RadiansToDegrees:F2})");
 
         // Clamp DirV before singularity check
         if (!reducedMotion)
@@ -430,6 +445,7 @@ public class CamController : IDisposable
                 dirV -= DirVEpsilon * 2;
         }
 
+        // Calculate isFlippedByGame after potential DirV adjustments
         var isFlippedByGame = Math.Abs(dirV) > StraightUp;
 
         // Handle DirH clamping
@@ -437,6 +453,10 @@ public class CamController : IDisposable
         dirH = RotateDir(dirH);
         if (!reducedMotion)
             dirH = ClampRotational(dirH, dirhMin, dirhMax);
+
+        // Save updated real DirH/DirV for next tick
+        realDirH = dirH;
+        realDirV = dirV;
 
         // Apply tilt to camera, accounting for how far we are from looking straight ahead and how much the head is pitched
         if (configuration.RemoveRollInFirstPerson || (configuration.ReducedMotionInCombat && S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty)))
@@ -448,36 +468,27 @@ public class CamController : IDisposable
             var camOppositeFromBone = isFlippedByGame != flippedByBone;
 
             var distFromStraightH = RotationalDifference(dirH, trueYaw);
+            var distFromStraightV = RotationalDifference(dirV, truePitch);
 
-            // Calculate tilt factor based on how far we are from looking straight ahead,
-            // which determines how much of the bone's roll is applied to the camera
-            var tiltFactor = 1f - (Math.Abs(distFromStraightH) / (MathF.PI / 2f));
+            var camAdjustQuaternion = Quaternion.CreateFromYawPitchRoll(distFromStraightH, -distFromStraightV, 0);
+            var camAdjustedRotation = correctedBoneRot * camAdjustQuaternion;
+            // Extract adjusted yaw, pitch, roll
+            var camFwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, camAdjustedRotation);
+            var camUp = Vector3.Transform(System.Numerics.Vector3.UnitY, camAdjustedRotation);
+            var camFlatDist = MathF.Sqrt(camFwd.X * camFwd.X + camFwd.Z * camFwd.Z);
+            var camYaw = MathF.Atan2(camFwd.X, camFwd.Z);
+            var camPitch = MathF.Atan2(camFwd.Y, camFlatDist);
+            // Calculate roll from camUp
+            var qCamLook = Quaternion.CreateFromYawPitchRoll(camYaw, -camPitch, 0);
+            var qCamRoll = Quaternion.Invert(qCamLook) * camAdjustedRotation;
+            var trueCamRoll = MathF.Atan2(2.0f * (qCamRoll.W * qCamRoll.Z + qCamRoll.X * qCamRoll.Y), 1.0f - 2.0f * (qCamRoll.Y * qCamRoll.Y + qCamRoll.Z * qCamRoll.Z));
 
-            // Calculate pitch tilt factor based on how far the bone is pitched from the straight plane
-            // since looking sideways with a pitched head should also tilt the camera to match
-            var pitchTiltFactor = -distFromStraightH / (MathF.PI / 2f);
+            // S.Log.Verbose($"Camera Original: Yaw={dirH * RadiansToDegrees:F2}, Pitch={dirV * RadiansToDegrees:F2}, BoneYaw={trueYaw * RadiansToDegrees:F2}, BonePitch={truePitch * RadiansToDegrees:F2}, BoneRoll={trueRoll * RadiansToDegrees:F2}");
+            // S.Log.Verbose($"Camera Adjusted: Yaw={camYaw * RadiansToDegrees:F2}, Pitch={camPitch * RadiansToDegrees:F2}, Roll={trueCamRoll * RadiansToDegrees:F2}");
 
-            // Clamp pitch tilt factor since beyond 90 degrees it should begin decreasing again
-            // however letting it decrease feels odd in practice, so we just clamp it here
-            if (pitchTiltFactor > 1f) pitchTiltFactor = 1;
-            else if (pitchTiltFactor < -1f) pitchTiltFactor = -1;
-
-            // When camera is flipped opposite the bone, to match the bone's rotation when looking sideways,
-            // we need to increase the pitch tilt effect by 90 degrees (PI/2 radians), so here we scale it accordingly
-            if (camOppositeFromBone)
-            {
-                // Also scale adjustment based on distance to singularity (looking straight up/down) to avoid snapping the camera
-                var pitchTiltAdjustment = pitchTiltFactor * (MathF.PI / 2f)
-                    * MathF.Min(1f, distanceToSingularity / DirVSmoothingThreshold);
-                pitchTiltFactor += pitchTiltAdjustment;
-            }
-            var pitchTilt = truePitch * pitchTiltFactor;
-            CameraRoll = (trueRoll * tiltFactor) + pitchTilt;
-
-            if (isFlippedByGame)
-            {
-                CameraRoll += (float)Math.PI; // flip camera when looking past straight up or down
-            }
+            dirH = camYaw;
+            dirV = camPitch;
+            CameraRoll = trueCamRoll;
         }
 
         // Apply FOV and rotational changes
@@ -489,6 +500,8 @@ public class CamController : IDisposable
         nextCameraPosition = boneModelPos;
 
         previousDirV = Cam->DirV;
+        previousRealDirH = Cam->DirH;
+        previousRealDirV = Cam->DirV;
 
         return true;
     }
