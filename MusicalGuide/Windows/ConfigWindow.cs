@@ -47,6 +47,23 @@ public class ConfigWindow : Window, IDisposable
             ImGui.Spacing();
         }
 
+        if (configuration.Enabled)
+        {
+            DrawFirstPersonSettings();
+            DrawThirdPersonSettings();
+        }
+        else
+        {
+            using (ImRaii.Disabled())
+            {
+                DrawFirstPersonSettings();
+                DrawThirdPersonSettings();
+            }
+        }
+    }
+
+    private void DrawFirstPersonSettings()
+    {
         if (ImGui.CollapsingHeader("First Person Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
             ImGui.Spacing();
@@ -66,10 +83,21 @@ public class ConfigWindow : Window, IDisposable
             }
 
             var removeRoll = configuration.RemoveRollInFirstPerson;
-            if (ImGui.Checkbox("Remove camera roll in first person (enable, if you get motion sickness)", ref removeRoll))
+            var removeRollLabel = "Remove camera roll in first person (enable, if you get motion sickness)";
+            if (reducedMotion)
             {
-                configuration.RemoveRollInFirstPerson = removeRoll;
-                configuration.Save();
+                using (ImRaii.Disabled())
+                {
+                    ImGui.Checkbox(removeRollLabel, ref reducedMotion);
+                }
+            }
+            else
+            {
+                if (ImGui.Checkbox(removeRollLabel, ref removeRoll))
+                {
+                    configuration.RemoveRollInFirstPerson = removeRoll;
+                    configuration.Save();
+                }
             }
 
             var reducedMotionInCombat = configuration.ReducedMotionInCombat;
@@ -124,11 +152,9 @@ public class ConfigWindow : Window, IDisposable
 
             ImGui.Spacing();
         }
-
-        DrawCameraDistanceSliders();
     }
 
-    private void DrawCameraDistanceSliders()
+    private void DrawThirdPersonSettings()
     {
         if (ImGui.CollapsingHeader("Third Person Camera Distances", ImGuiTreeNodeFlags.DefaultOpen))
         {

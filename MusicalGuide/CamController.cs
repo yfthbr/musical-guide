@@ -112,6 +112,9 @@ public class CamController : IDisposable
             var CameraUpdateAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 3); // vf3 is CameraUpdate
             var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
 
+            // TODO: find and hook whatever function checks Cam->DirH for movement purposes and flip DirH for its duration if DirV is inverted
+            // TODO: account for player movement occurring after camera position calculation (hide player based on velocity? predict?)
+
             getCameraPositionHook = S.Interop.HookFromAddress<GetCameraPositionDelegate>(GetCameraPositionAddress, GetCameraPositionDetour);
             shouldDrawGameObjectHook = S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
 
@@ -457,7 +460,7 @@ public class CamController : IDisposable
         realDirV = dirV;
 
         // Apply tilt to camera, accounting for how far we are from looking straight ahead and how much the head is pitched
-        if (configuration.RemoveRollInFirstPerson || (configuration.ReducedMotionInCombat && S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty)))
+        if (configuration.RemoveRollInFirstPerson || reducedMotion)
         {
             CameraRoll = isFlippedByGame ? (float)Math.PI : 0f;
         }
@@ -498,11 +501,11 @@ public class CamController : IDisposable
     private static (float yaw, float pitch, float roll) GetYawPitchRoll(Quaternion rotation)
     {
         var fwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, rotation);
-        var up = Vector3.Transform(System.Numerics.Vector3.UnitY, rotation);
         var flatDist = MathF.Sqrt(fwd.X * fwd.X + fwd.Z * fwd.Z);
         var yaw = MathF.Atan2(fwd.X, fwd.Z);
         var pitch = MathF.Atan2(fwd.Y, flatDist);
-        // Calculate roll from camUp
+
+        // Calculate roll
         var qLook = Quaternion.CreateFromYawPitchRoll(yaw, -pitch, 0);
         var qRoll = Quaternion.Invert(qLook) * rotation;
         var roll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
