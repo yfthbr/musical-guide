@@ -44,6 +44,10 @@ public class CamController : IDisposable
     public const float DegreesToRadians = MathF.PI / 180.0f;
     public const float RadiansToDegrees = 180.0f / MathF.PI;
 
+    private const float StraightUp = 90 * DegreesToRadians;
+    private const float StraightDown = -90 * DegreesToRadians;
+    private const float DirVSmoothingThreshold = 90 * DegreesToRadians;
+
     private const int HeadSkeletonIndex = 1;
     #endregion
 
@@ -330,7 +334,8 @@ public class CamController : IDisposable
 
         var trueYaw = standardYaw; // Adjust yaw based on character rotation
         var truePitch = standardPitch;
-        if (dotUp < 0)
+        var flippedByBone = dotUp < 0;
+        if (flippedByBone)
         {
             // Unwrap Pitch: If we were at 89, we go to 91. 
             // Math: PI - Pitch (for positive) or -PI - Pitch (for negative)
@@ -410,15 +415,13 @@ public class CamController : IDisposable
             S.Log.Debug($"Entered first person, initializing camera vertical limits and orientation.");
         }
 
-        var straightUp = 90 * DegreesToRadians;
-        var straightDown = -90 * DegreesToRadians;
-
         // Clamp DirV before singularity check
         if (!reducedMotion)
             dirV = ClampRotational(dirV, dirvMin, dirvMax);
 
         // Jump over the singularity at straight up/down
-        if (Math.Abs(dirV - straightUp) <= DirVEpsilon || Math.Abs(dirV - straightDown) <= DirVEpsilon)
+        var distanceToSingularity = Math.Min(Math.Abs(dirV - StraightUp), Math.Abs(dirV - StraightDown));
+        if (distanceToSingularity <= DirVEpsilon)
         {
             var before = dirV;
             if (previousDirV < dirV)
@@ -427,7 +430,7 @@ public class CamController : IDisposable
                 dirV -= DirVEpsilon * 2;
         }
 
-        var isFlippedByGame = Math.Abs(dirV) > straightUp;
+        var isFlippedByGame = Math.Abs(dirV) > StraightUp;
 
         // Handle DirH clamping
         CalculateDirectionRange(trueYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
@@ -442,17 +445,38 @@ public class CamController : IDisposable
         }
         else
         {
+            var camOppositeFromBone = isFlippedByGame != flippedByBone;
+
             var distFromStraightH = RotationalDifference(dirH, trueYaw);
+
+            // Calculate tilt factor based on how far we are from looking straight ahead,
+            // which determines how much of the bone's roll is applied to the camera
             var tiltFactor = 1f - (Math.Abs(distFromStraightH) / (MathF.PI / 2f));
+
+            // Calculate pitch tilt factor based on how far the bone is pitched from the straight plane
+            // since looking sideways with a pitched head should also tilt the camera to match
             var pitchTiltFactor = -distFromStraightH / (MathF.PI / 2f);
+
+            // Clamp pitch tilt factor since beyond 90 degrees it should begin decreasing again
+            // however letting it decrease feels odd in practice, so we just clamp it here
             if (pitchTiltFactor > 1f) pitchTiltFactor = 1;
             else if (pitchTiltFactor < -1f) pitchTiltFactor = -1;
+
+            // When camera is flipped opposite the bone, to match the bone's rotation when looking sideways,
+            // we need to increase the pitch tilt effect by 90 degrees (PI/2 radians), so here we scale it accordingly
+            if (camOppositeFromBone)
+            {
+                // Also scale adjustment based on distance to singularity (looking straight up/down) to avoid snapping the camera
+                var pitchTiltAdjustment = pitchTiltFactor * (MathF.PI / 2f)
+                    * MathF.Min(1f, distanceToSingularity / DirVSmoothingThreshold);
+                pitchTiltFactor += pitchTiltAdjustment;
+            }
             var pitchTilt = truePitch * pitchTiltFactor;
             CameraRoll = (trueRoll * tiltFactor) + pitchTilt;
 
             if (isFlippedByGame)
             {
-                CameraRoll = (trueRoll * tiltFactor) + (float)Math.PI; // flip camera when looking past straight up or down
+                CameraRoll += (float)Math.PI; // flip camera when looking past straight up or down
             }
         }
 
