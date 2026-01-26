@@ -428,8 +428,6 @@ public class CamController : IDisposable
         else if (dirV < -MathF.PI)
             dirV += 2 * MathF.PI;
 
-        S.Log.Verbose($"DirV before clamp: {dirV * RadiansToDegrees:F2} (Min: {dirvMin * RadiansToDegrees:F2}, Max: {dirvMax * RadiansToDegrees:F2})");
-
         // Clamp DirV before singularity check
         if (!reducedMotion)
             dirV = ClampRotational(dirV, dirvMin, dirvMax);
@@ -472,23 +470,14 @@ public class CamController : IDisposable
 
             var camAdjustQuaternion = Quaternion.CreateFromYawPitchRoll(distFromStraightH, -distFromStraightV, 0);
             var camAdjustedRotation = correctedBoneRot * camAdjustQuaternion;
-            // Extract adjusted yaw, pitch, roll
-            var camFwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, camAdjustedRotation);
-            var camUp = Vector3.Transform(System.Numerics.Vector3.UnitY, camAdjustedRotation);
-            var camFlatDist = MathF.Sqrt(camFwd.X * camFwd.X + camFwd.Z * camFwd.Z);
-            var camYaw = MathF.Atan2(camFwd.X, camFwd.Z);
-            var camPitch = MathF.Atan2(camFwd.Y, camFlatDist);
-            // Calculate roll from camUp
-            var qCamLook = Quaternion.CreateFromYawPitchRoll(camYaw, -camPitch, 0);
-            var qCamRoll = Quaternion.Invert(qCamLook) * camAdjustedRotation;
-            var trueCamRoll = MathF.Atan2(2.0f * (qCamRoll.W * qCamRoll.Z + qCamRoll.X * qCamRoll.Y), 1.0f - 2.0f * (qCamRoll.Y * qCamRoll.Y + qCamRoll.Z * qCamRoll.Z));
+            var (camYaw, camPitch, camRoll) = GetYawPitchRoll(camAdjustedRotation);
 
             // S.Log.Verbose($"Camera Original: Yaw={dirH * RadiansToDegrees:F2}, Pitch={dirV * RadiansToDegrees:F2}, BoneYaw={trueYaw * RadiansToDegrees:F2}, BonePitch={truePitch * RadiansToDegrees:F2}, BoneRoll={trueRoll * RadiansToDegrees:F2}");
-            // S.Log.Verbose($"Camera Adjusted: Yaw={camYaw * RadiansToDegrees:F2}, Pitch={camPitch * RadiansToDegrees:F2}, Roll={trueCamRoll * RadiansToDegrees:F2}");
+            // S.Log.Verbose($"Camera Adjusted: Yaw={camYaw * RadiansToDegrees:F2}, Pitch={camPitch * RadiansToDegrees:F2}, Roll={camRoll * RadiansToDegrees:F2}");
 
             dirH = camYaw;
             dirV = camPitch;
-            CameraRoll = trueCamRoll;
+            CameraRoll = camRoll;
         }
 
         // Apply FOV and rotational changes
@@ -504,6 +493,21 @@ public class CamController : IDisposable
         previousRealDirV = Cam->DirV;
 
         return true;
+    }
+
+    private static (float yaw, float pitch, float roll) GetYawPitchRoll(Quaternion rotation)
+    {
+        var fwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, rotation);
+        var up = Vector3.Transform(System.Numerics.Vector3.UnitY, rotation);
+        var flatDist = MathF.Sqrt(fwd.X * fwd.X + fwd.Z * fwd.Z);
+        var yaw = MathF.Atan2(fwd.X, fwd.Z);
+        var pitch = MathF.Atan2(fwd.Y, flatDist);
+        // Calculate roll from camUp
+        var qLook = Quaternion.CreateFromYawPitchRoll(yaw, -pitch, 0);
+        var qRoll = Quaternion.Invert(qLook) * rotation;
+        var roll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
+
+        return (yaw, pitch, roll);
     }
 
     private static void CalculateDirectionRange(float rootRotation, int degrees, float offset, out float dirMin, out float dirMax)
