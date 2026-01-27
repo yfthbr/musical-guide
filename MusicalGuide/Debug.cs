@@ -9,6 +9,7 @@ internal static unsafe class Debug
 {
     public static void PrintDebug(Configuration configuration)
     {
+#if DEBUG
         const int HEAD_SKELETON_INDEX = 1;
         const int BONE_INDEX = 33; // j_f_uhana
 
@@ -48,5 +49,7 @@ internal static unsafe class Debug
         }
         S.Log.Info($"Character Position: {(Vector3)S.ObjectTable.LocalPlayer!.Position} - Draw Offset: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawOffset} - Rotation: {((GameObject*)S.ObjectTable.LocalPlayer!.Address)->Rotation} - CameraTilt {CamController.CameraRoll}");
         S.Log.Info($"Status: IsSeated: {Marshal.ReadByte((nint)(&((Character*)S.ObjectTable.LocalPlayer!.Address)->EmoteController) + 0x20)}");
+        S.Log.Info($"Camera {Marshal.ReadByte((nint)CamController.Cam + 0x2a)} - DirH: {CamController.Cam->DirH * CamController.RadiansToDegrees:F2} degrees");
+#endif
     }
 }

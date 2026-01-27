@@ -65,8 +65,8 @@ public class CamController : IDisposable
         set { ((ExpandedCamera*)Cam)->Tilt = value; }
     }
 
-    private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
-    public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0 && ((ExpandedCamera*)Cam)->Transition == 0f;
+    internal static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
+    public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson && ((ExpandedCamera*)Cam)->ControlType == 0 && ((ExpandedCamera*)Cam)->Transition == 0f;
     private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
     #endregion
 
@@ -335,52 +335,7 @@ public class CamController : IDisposable
         var fixAxes = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, MathF.PI / 2f) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, MathF.PI);
         var correctedBoneRot = boneWorldRotation * fixAxes;
 
-        // Determine pitch, yaw and roll from bone world rotation
-        var boneFwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, correctedBoneRot);
-        var boneUp = Vector3.Transform(System.Numerics.Vector3.UnitY, correctedBoneRot);
-
-        // Calculate standard yaw and pitch from bone forward vector
-        var flatDist = MathF.Sqrt(boneFwd.X * boneFwd.X + boneFwd.Z * boneFwd.Z);
-        var standardYaw = MathF.Atan2(boneFwd.X, boneFwd.Z);
-        var standardPitch = MathF.Atan2(boneFwd.Y, flatDist);
-
-        // Detect inverted state
-        var qStandard = Quaternion.CreateFromYawPitchRoll(standardYaw, -standardPitch, 0); // Note: Pitch sign might vary by engine, check FFXIV usually requires negation here
-        var calculatedUp = Vector3.Transform(System.Numerics.Vector3.UnitY, qStandard);
-
-        // Compare calculated Up with actual Bone Up. If they point in opposite directions, we are inverted.
-        var dotUp = Vector3.Dot(boneUp, calculatedUp);
-
-        var trueYaw = standardYaw; // Adjust yaw based on character rotation
-        var truePitch = standardPitch;
-        var flippedByBone = dotUp < 0;
-        if (flippedByBone)
-        {
-            // Unwrap Pitch: If we were at 89, we go to 91. 
-            // Math: PI - Pitch (for positive) or -PI - Pitch (for negative)
-            truePitch = (truePitch >= 0) ? (MathF.PI - truePitch) : (-MathF.PI - truePitch);
-
-            // Yaw is also flipped 180 degrees when inverted
-            trueYaw += MathF.PI;
-        }
-
-        // Normalize Yaw to -PI to PI
-        while (trueYaw > MathF.PI) trueYaw -= 2 * MathF.PI;
-        while (trueYaw <= -MathF.PI) trueYaw += 2 * MathF.PI;
-
-        // Remove the Yaw and Pitch rotation from the Bone Rotation to isolate Roll.
-        // We create a rotation representing just the Look Direction (Yaw + Pitch)
-        // Note: FFXIV 'DirV' (Pitch) is typically inverted in quaternion calculation (Negative = Up)
-        var qLook = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, trueYaw) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, -truePitch);
-
-        // The difference between the Look rotation and actual Bone rotation is the Roll
-        // qBone = qLook * qRoll  =>  qRoll = Inverse(qLook) * qBone
-        var qRoll = Quaternion.Invert(qLook) * correctedBoneRot;
-
-        // Extract Roll angle from qRoll (Z-axis rotation)
-        // Using Atan2 on the matrix components of the quaternion
-        // qRoll should be roughly (0, 0, sin(a/2), cos(a/2))
-        var trueRoll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
+        var (boneYaw, bonePitch, boneRoll, flippedByBone) = GetYawPitchRoll(correctedBoneRot);
 
         // // Apply configured offsets to virtual bone position
         var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
@@ -392,28 +347,28 @@ public class CamController : IDisposable
         var dirH = realDirH + dirHDiff;
 
         // Determine DirV and DirH limits
-        CalculateDirectionRange(truePitch, DirVMaxDeg, configuration.FirstPersonHeadRotationPitch * DegreesToRadians, out var dirvMin, out var dirvMax);
+        CalculateDirectionRange(bonePitch, DirVMaxDeg, configuration.FirstPersonHeadRotationPitch * DegreesToRadians, out var dirvMin, out var dirvMax);
 
         if (previousTickWasFirstPerson)
         {
             // Apply rotation delta to camera
 
             // Yaw affects camera DirH
-            var diff = RotationalDifference(trueYaw, previousFacing);
+            var diff = RotationalDifference(boneYaw, previousFacing);
             if (Math.Abs(diff) > EulerEpsilon)
             {
                 if (!reducedMotion && !InputManager.IsRightMouseDown())
                     dirH += diff;
-                previousFacing = trueYaw;
+                previousFacing = boneYaw;
             }
 
             // Pitch affects camera DirV
-            diff = RotationalDifference(truePitch, previousHeadPitch);
+            diff = RotationalDifference(bonePitch, previousHeadPitch);
             if (Math.Abs(diff) > EulerEpsilon)
             {
                 if (!reducedMotion)
                     dirV += diff;
-                previousHeadPitch = truePitch;
+                previousHeadPitch = bonePitch;
             }
         }
         else
@@ -421,12 +376,12 @@ public class CamController : IDisposable
             DerestrictDirV();
 
             // Make sure we face the same way our character does when entering first person
-            previousDirH = dirH = trueYaw;
-            realDirH = trueYaw;
-            previousFacing = trueYaw;
-            dirV = truePitch;
-            realDirV = truePitch;
-            previousHeadPitch = truePitch;
+            previousDirH = dirH = boneYaw;
+            realDirH = boneYaw;
+            previousFacing = boneYaw;
+            dirV = bonePitch;
+            realDirV = bonePitch;
+            previousHeadPitch = bonePitch;
             previousTickWasFirstPerson = true;
             S.Log.Debug($"Entered first person, initializing camera vertical limits and orientation.");
         }
@@ -457,7 +412,7 @@ public class CamController : IDisposable
         var isFlippedByGame = Math.Abs(dirV) > StraightUp;
 
         // Handle DirH clamping
-        CalculateDirectionRange(trueYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
+        CalculateDirectionRange(boneYaw, DirHMaxDeg, 0f, out var dirhMin, out var dirhMax);
         dirH = RotateDir(dirH);
         if (!reducedMotion)
             dirH = ClampRotational(dirH, dirhMin, dirhMax);
@@ -473,20 +428,24 @@ public class CamController : IDisposable
         }
         else
         {
-            var camOppositeFromBone = isFlippedByGame != flippedByBone;
-
-            var distFromStraightH = RotationalDifference(dirH, trueYaw);
-            var distFromStraightV = RotationalDifference(dirV, truePitch);
+            var distFromStraightH = RotationalDifference(dirH, boneYaw);
+            var distFromStraightV = RotationalDifference(dirV, bonePitch);
 
             var camAdjustQuaternion = Quaternion.CreateFromYawPitchRoll(distFromStraightH, -distFromStraightV, 0);
             var camAdjustedRotation = correctedBoneRot * camAdjustQuaternion;
-            var (camYaw, camPitch, camRoll) = GetYawPitchRoll(camAdjustedRotation);
+            var (camYaw, camPitch, camRoll, camFlipped) = GetYawPitchRoll(camAdjustedRotation, true);
 
             // S.Log.Verbose($"Camera Original: Yaw={dirH * RadiansToDegrees:F2}, Pitch={dirV * RadiansToDegrees:F2}, BoneYaw={trueYaw * RadiansToDegrees:F2}, BonePitch={truePitch * RadiansToDegrees:F2}, BoneRoll={trueRoll * RadiansToDegrees:F2}");
             // S.Log.Verbose($"Camera Adjusted: Yaw={camYaw * RadiansToDegrees:F2}, Pitch={camPitch * RadiansToDegrees:F2}, Roll={camRoll * RadiansToDegrees:F2}");
 
+            if (camFlipped)
+            {
+                camRoll += (float)Math.PI;
+            }
+
             dirH = camYaw;
             dirV = camPitch;
+
             CameraRoll = camRoll;
         }
 
@@ -517,19 +476,41 @@ public class CamController : IDisposable
         Cam->DirVMax = DefaultDirVMax;
     }
 
-    private static (float yaw, float pitch, float roll) GetYawPitchRoll(Quaternion rotation)
+    private static (float yaw, float pitch, float roll, bool inverted) GetYawPitchRoll(Quaternion rotation, bool correctInvertion = false)
     {
         var fwd = Vector3.Transform(System.Numerics.Vector3.UnitZ, rotation);
         var flatDist = MathF.Sqrt(fwd.X * fwd.X + fwd.Z * fwd.Z);
         var yaw = MathF.Atan2(fwd.X, fwd.Z);
         var pitch = MathF.Atan2(fwd.Y, flatDist);
 
+        // Detect inverted state
+        var qStandard = Quaternion.CreateFromYawPitchRoll(yaw, -pitch, 0);
+        var calculatedUp = Vector3.Transform(System.Numerics.Vector3.UnitY, qStandard);
+        var up = Vector3.Transform(System.Numerics.Vector3.UnitY, rotation);
+        // Compare calculated Up with actual Bone Up. If they point in opposite directions, we are inverted.
+        var dotUp = Vector3.Dot(up, calculatedUp);
+
+        var inverted = dotUp < 0;
+        if (inverted && correctInvertion)
+        {
+            // Unwrap Pitch: If we were at 89, we go to 91. 
+            // Math: PI - Pitch (for positive) or -PI - Pitch (for negative)
+            pitch = (pitch >= 0) ? (MathF.PI - pitch) : (-MathF.PI - pitch);
+
+            // Yaw is also flipped 180 degrees when inverted
+            yaw += MathF.PI;
+        }
+
+        // Normalize Yaw to -PI to PI
+        while (yaw > MathF.PI) yaw -= 2 * MathF.PI;
+        while (yaw <= -MathF.PI) yaw += 2 * MathF.PI;
+
         // Calculate roll
         var qLook = Quaternion.CreateFromYawPitchRoll(yaw, -pitch, 0);
         var qRoll = Quaternion.Invert(qLook) * rotation;
         var roll = MathF.Atan2(2.0f * (qRoll.W * qRoll.Z + qRoll.X * qRoll.Y), 1.0f - 2.0f * (qRoll.Y * qRoll.Y + qRoll.Z * qRoll.Z));
 
-        return (yaw, pitch, roll);
+        return (yaw, pitch, roll, inverted);
     }
 
     private static void CalculateDirectionRange(float rootRotation, int degrees, float offset, out float dirMin, out float dirMax)
@@ -717,7 +698,6 @@ internal class NotReadyException : Exception
 internal struct ExpandedCamera
 {
     [FieldOffset(0x170)] public float Tilt; // Roll axis of the camera in radians
-    [FieldOffset(0x180)] public int Mode; // 0 = first person
     [FieldOffset(0x184)] public int ControlType; // 0 = first person, 1/2 legacy/standard 3rd person
     [FieldOffset(0x1A0)] public float Transition; // Normally counts down from 0.5 to 0 during transitions between 1st and 3rd person
 }
