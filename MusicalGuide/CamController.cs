@@ -66,7 +66,8 @@ public class CamController : IDisposable
     }
 
     internal static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
-    public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson && ((ExpandedCamera*)Cam)->ControlType == 0 && ((ExpandedCamera*)Cam)->Transition == 0f;
+    public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson // First person zoom is active
+        && ((ExpandedCamera*)Cam)->Transition == 0f; // Not transitioning to a different mode
     private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
     #endregion
 
@@ -698,7 +699,6 @@ internal class NotReadyException : Exception
 internal struct ExpandedCamera
 {
     [FieldOffset(0x170)] public float Tilt; // Roll axis of the camera in radians
-    [FieldOffset(0x184)] public int ControlType; // 0 = first person, 1/2 legacy/standard 3rd person
     [FieldOffset(0x1A0)] public float Transition; // Normally counts down from 0.5 to 0 during transitions between 1st and 3rd person
 }
 
