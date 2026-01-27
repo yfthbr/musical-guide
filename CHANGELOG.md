@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.1"></a>
+## 1.3.1 (2026-01-27)
+
+### Bug Fixes
+
+* camera snapping when looking up/down past the cam flip point
+* handle mounted use
+* movement controls past 90deg
+* proper dirV clamping when upside down
+* reimplement camera rotation with full quaternions
+
 <a name="1.3.0"></a>
 ## 1.3.0 (2026-01-24)
 
