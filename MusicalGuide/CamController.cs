@@ -5,6 +5,7 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Graphics;
@@ -51,7 +52,7 @@ public class CamController : IDisposable
     private const int HeadSkeletonIndex = 1;
     #endregion
 
-    #region Dynamic Camera Accessors
+    #region Dynamic Accessors
     public static unsafe float CurrentDistance
     {
         get { return Cam->Distance; }
@@ -66,6 +67,7 @@ public class CamController : IDisposable
 
     private static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
     public static unsafe bool InFirstPerson => ((ExpandedCamera*)Cam)->Mode == 0 && ((ExpandedCamera*)Cam)->ControlType == 0 && ((ExpandedCamera*)Cam)->Transition == 0f;
+    private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
     #endregion
 
     #region Volatile State
@@ -208,6 +210,9 @@ public class CamController : IDisposable
         if ((nint)gameObject == nint.Zero || (nint)sceneCameraPos == nint.Zero)
             goto Original;
 
+        if (IsMounted)
+            goto Original;
+
         var closeObject = Vector3.Distance(gameObject->Position, *sceneCameraPos) < 4f;
         if (!closeObject)
             goto Original;
@@ -266,15 +271,14 @@ public class CamController : IDisposable
         // Keep a rolling cache of DirH for when we exit first person
         previousDirH = Cam->DirH;
 
-        if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
+        if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled || IsMounted)
         {
             if (exitingFirstPerson || previousTickWasFirstPerson)
             {
-                S.Log.Debug("Exited first person, resetting camera vertical limits.");
+                S.Log.Debug("Exited real first person mode, resetting camera vertical limits.");
                 unsafe
                 {
-                    Cam->DirVMin = DefaultDirVMin;
-                    Cam->DirVMax = DefaultDirVMax;
+                    RestoreDirVRestrictions();
                     Cam->FoV = DefaultFoV;
                     CameraRoll = 0;
                 }
@@ -288,7 +292,8 @@ public class CamController : IDisposable
 
         exitingFirstPerson = false;
 
-        var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawObject;
+        var chara = (Character*)S.ObjectTable.LocalPlayer!.Address;
+        var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)chara->DrawObject;
         if ((nint)charaBase == 0)
             return false;
 
@@ -300,23 +305,27 @@ public class CamController : IDisposable
         if ((nint)havokPose == 0)
             return false;
 
+        // Only derestrict DirV if we are in normal movement state. Flying and diving should still restrict DirV as it is used for movement direction.
+        if (chara->MovementState != MovementStateOptions.Normal)
+            RestoreDirVRestrictions();
+        else
+            DerestrictDirV();
+
+        var basePosition = charaBase->DrawObject.Object.Position;
+        var baseRotation = charaBase->DrawObject.Object.Rotation;
+        var baseScale = charaBase->DrawObject.Object.Scale * ((ExpandedCharacterBase*)charaBase)->ScaleFactor;
+        var boneTransform = havokPose->AccessBoneModelSpace(HeadBoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
+
+        // TODO: calculate position and rotation from mount attachment point if mounted, see CharacterBase->Attach; for skeleton
+
         // Player's position matrix
         var playerModelMatrix = ToMatrix(new Transform()
         {
-            Position = charaBase->DrawObject.Object.Position,
-            Rotation = charaBase->DrawObject.Object.Rotation,
-            Scale = charaBase->DrawObject.Object.Scale * ((ExpandedCharacterBase*)charaBase)->ScaleFactor
+            Position = basePosition,
+            Rotation = baseRotation,
+            Scale = baseScale
         });
 
-        var playerRotationMatrix = ToMatrix(new Transform()
-        {
-            Position = Vector3.Zero,
-            Rotation = charaBase->DrawObject.Object.Rotation,
-            Scale = charaBase->DrawObject.Object.Scale * ((ExpandedCharacterBase*)charaBase)->ScaleFactor
-        });
-
-        // Grab the bone's position and euler rotation, since we need to control the camera's pitch and yaw based on head orientation
-        var boneTransform = havokPose->AccessBoneModelSpace(HeadBoneIndex, FFXIVClientStructs.Havok.Animation.Rig.hkaPose.PropagateOrNot.DontPropagate);
         var boneModelPos = Vector3.Transform(new Vector3(boneTransform->Translation.X, boneTransform->Translation.Y, boneTransform->Translation.Z), playerModelMatrix);
 
         // Calculate rotation of the bone in world space so we can determine where the player's head is facing
@@ -409,9 +418,7 @@ public class CamController : IDisposable
         }
         else
         {
-            // Derestrict camera vertical limits
-            Cam->DirVMin = -2 * MathF.PI;
-            Cam->DirVMax = 2 * MathF.PI;
+            DerestrictDirV();
 
             // Make sure we face the same way our character does when entering first person
             previousDirH = dirH = trueYaw;
@@ -496,6 +503,18 @@ public class CamController : IDisposable
         previousRealDirV = Cam->DirV;
 
         return true;
+    }
+
+    private static unsafe void DerestrictDirV()
+    {
+        Cam->DirVMin = -2 * MathF.PI;
+        Cam->DirVMax = 2 * MathF.PI;
+    }
+
+    private static unsafe void RestoreDirVRestrictions()
+    {
+        Cam->DirVMin = DefaultDirVMin;
+        Cam->DirVMax = DefaultDirVMax;
     }
 
     private static (float yaw, float pitch, float roll) GetYawPitchRoll(Quaternion rotation)
