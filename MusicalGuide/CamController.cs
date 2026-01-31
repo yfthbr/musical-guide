@@ -66,8 +66,7 @@ public class CamController : IDisposable
     }
 
     internal static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
-    public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson // First person zoom is active
-        && ((ExpandedCamera*)Cam)->Transition == 0f; // Not transitioning to a different mode
+    public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson;
     private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
     #endregion
 
@@ -261,7 +260,8 @@ public class CamController : IDisposable
                 // Transition ticks from 0.5 to 0, progress goes from 1 to 0
                 var wasLookingLeft = RotationalDifference(previousFacing, previousDirH) < 0;
                 var progress = ((ExpandedCamera*)Cam)->Transition / 0.5f;
-                Cam->DirH = previousDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
+                if (!InFirstPerson)
+                    Cam->DirH = previousDirH + ((wasLookingLeft ? -1 : 1) * (MathF.PI * (1 - progress)));
             }
             return false;
         }
