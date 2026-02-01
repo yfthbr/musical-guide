@@ -243,7 +243,20 @@ public class CamController : IDisposable
 
     private unsafe bool TryOverrideCameraPosition()
     {
-        if (!PlayerDrawObjectExists() || S.ClientState.IsGPosing)
+        if (!PlayerDrawObjectExists())
+        {
+            if (IsMounted && previousTickWasFirstPerson)
+            {
+                S.Log.Debug("Mounted while in first person, restoring vanilla first person camera.");
+                previousTickWasFirstPerson = false;
+                RestoreDirVRestrictions();
+                Cam->FoV = DefaultFoV;
+                CameraRoll = 0;
+            }
+            return false;
+        }
+
+        if (S.ClientState.IsGPosing)
             return false;
 
         // Lock facing during transitions
@@ -272,7 +285,7 @@ public class CamController : IDisposable
         // Keep a rolling cache of DirH for when we exit first person
         previousDirH = Cam->DirH;
 
-        if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled || IsMounted)
+        if (!configuration.RealFirstPerson || !InFirstPerson || !configuration.Enabled)
         {
             if (exitingFirstPerson || previousTickWasFirstPerson)
             {
