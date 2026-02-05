@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.3"></a>
+## 1.3.3 (2026-02-05)
+
+### Bug Fixes
+
+* camera no longer spins when exiting NPC dialog in real first person
+* camera staying rolled after entering mount from first person
+
 <a name="1.3.2"></a>
 ## 1.3.2 (2026-01-27)
 
