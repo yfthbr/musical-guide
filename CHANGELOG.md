@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.4"></a>
+## 1.3.4 (2026-02-11)
+
+### Bug Fixes
+
+* add warning about 1st person camera auto-adjustment
+
 <a name="1.3.3"></a>
 ## 1.3.3 (2026-02-05)
 
