@@ -2,6 +2,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
@@ -12,7 +13,7 @@ public class ConfigWindow : Window, IDisposable
     private readonly Configuration configuration;
     private readonly CamController cam;
     private readonly Vector4 warningColor = new Vector4(1.0f, 1.0f, 0.0f, 1.0f);
-    private const float SliderWidth = 300f;
+    private float SliderWidth => 300f * ImGuiHelpers.GlobalScale;
 
     // We give this window a constant ID using ###
     // This allows for labels being dynamic, like "{FPS Counter}fps###XYZ counter window",
@@ -20,11 +21,11 @@ public class ConfigWindow : Window, IDisposable
     public ConfigWindow(MusicalGuide plugin) : base(
         $"Musical Guide ({plugin.Version.ToString()}) Configuration###MusicalGuideConfig")
     {
-        Size = new Vector2(720, 560);
+        Size = new Vector2(720, 560) * ImGuiHelpers.GlobalScale;
         SizeCondition = ImGuiCond.FirstUseEver;
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(720, 560),
+            MinimumSize = new Vector2(720, 560) * ImGuiHelpers.GlobalScale,
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
         };
 
