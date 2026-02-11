@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
@@ -11,6 +12,7 @@ public class ConfigWindow : Window, IDisposable
     private readonly Configuration configuration;
     private readonly CamController cam;
     private readonly Vector4 warningColor = new Vector4(1.0f, 1.0f, 0.0f, 1.0f);
+    private const float SliderWidth = 300f;
 
     // We give this window a constant ID using ###
     // This allows for labels being dynamic, like "{FPS Counter}fps###XYZ counter window",
@@ -20,6 +22,11 @@ public class ConfigWindow : Window, IDisposable
     {
         Size = new Vector2(720, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
+        SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(720, 560),
+            MaximumSize = new Vector2(float.MaxValue, float.MaxValue)
+        };
 
         configuration = plugin.Configuration;
         cam = plugin.Cam;
@@ -87,14 +94,16 @@ public class ConfigWindow : Window, IDisposable
             }
 
             var reducedMotion = configuration.ReducedMotion;
-            if (ImGui.Checkbox("Reduce motion (no rotation follow, camera allowed to rotate 360 degrees, recommended for gameplay)", ref reducedMotion))
+            if (ImGui.Checkbox("Reduce motion", ref reducedMotion))
             {
                 configuration.ReducedMotion = reducedMotion;
                 configuration.Save();
             }
+            ImGui.SameLine();
+            ImGuiComponents.HelpMarker("Disables rotating the camera automatically with head movement and allows the camera to rotate 360 degrees, which is recommended for regular gameplay to reduce motion sickness.");
 
             var removeRoll = configuration.RemoveRollInFirstPerson;
-            var removeRollLabel = "Remove camera roll in first person (enable, if you get motion sickness)";
+            var removeRollLabel = "Remove camera roll in first person";
             if (reducedMotion)
             {
                 using (ImRaii.Disabled())
@@ -110,6 +119,8 @@ public class ConfigWindow : Window, IDisposable
                     configuration.Save();
                 }
             }
+            ImGui.SameLine();
+            ImGuiComponents.HelpMarker("Keeps your camera rotation on level with the horizon, which can help reduce motion sickness.");
 
             var reducedMotionInCombat = configuration.ReducedMotionInCombat;
             if (ImGui.Checkbox("Reduce motion in combat and instanced content", ref reducedMotionInCombat))
@@ -125,6 +136,7 @@ public class ConfigWindow : Window, IDisposable
                 if (ImGui.CollapsingHeader("First Person Adjustments", ImGuiTreeNodeFlags.Framed))
                 {
                     var fov = configuration.FirstPersonFieldOfView;
+                    ImGui.SetNextItemWidth(SliderWidth);
                     if (ImGui.SliderInt("Field of view in first person", ref fov, CamController.MinFoV, CamController.MaxFoV, "%d", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonFieldOfView = fov;
@@ -132,6 +144,7 @@ public class ConfigWindow : Window, IDisposable
                     }
 
                     var headOffsetForward = configuration.FirstPersonHeadOffsetForward;
+                    ImGui.SetNextItemWidth(SliderWidth);
                     if (ImGui.SliderFloat("Camera offset forward", ref headOffsetForward, -0.05f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetForward = headOffsetForward;
@@ -139,6 +152,7 @@ public class ConfigWindow : Window, IDisposable
                     }
 
                     var headOffsetUpward = configuration.FirstPersonHeadOffsetUpward;
+                    ImGui.SetNextItemWidth(SliderWidth);
                     if (ImGui.SliderFloat("Camera offset up", ref headOffsetUpward, -0.15f, 0.25f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetUpward = headOffsetUpward;
@@ -146,6 +160,7 @@ public class ConfigWindow : Window, IDisposable
                     }
 
                     var headOffsetSideward = configuration.FirstPersonHeadOffsetSideward;
+                    ImGui.SetNextItemWidth(SliderWidth);
                     if (ImGui.SliderFloat("Camera offset sideways", ref headOffsetSideward, -0.15f, 0.15f, "%.3f", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadOffsetSideward = headOffsetSideward;
@@ -153,11 +168,14 @@ public class ConfigWindow : Window, IDisposable
                     }
 
                     var headRotationPitch = configuration.FirstPersonHeadRotationPitch;
-                    if (ImGui.SliderInt("Head rotation pitch adjustment (if your face bone is already rotated from standard)", ref headRotationPitch, -10, 40, "%d", ImGuiSliderFlags.AlwaysClamp))
+                    ImGui.SetNextItemWidth(SliderWidth);
+                    if (ImGui.SliderInt("Head rotation pitch adjustment", ref headRotationPitch, -10, 40, "%d", ImGuiSliderFlags.AlwaysClamp))
                     {
                         configuration.FirstPersonHeadRotationPitch = headRotationPitch;
                         configuration.Save();
                     }
+                    ImGui.SameLine();
+                    ImGuiComponents.HelpMarker("Some races may need to adjust this if their face bone is already rotated from the standard.");
                 }
             }
 
@@ -201,6 +219,7 @@ public class ConfigWindow : Window, IDisposable
                     var name = Enum.GetName(typeof(State), val)!;
                     configuration.Distances.TryGetValue(val, out var dist);
                     if (dist == 0) dist = 10f;
+                    ImGui.SetNextItemWidth(SliderWidth);
                     if (ImGui.SliderFloat(name, ref dist, CamController.MinCameraDistance, CamController.MaxCameraDistance, "%.1f"))
                     {
                         configuration.SetManualDistance(val, dist);
