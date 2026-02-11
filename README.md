@@ -7,4 +7,4 @@ A Dalamud plugin that enhances camera functionality:
 
 Staying within the limits of the game is a core design principle. Camera distances respect vanilla distance limitations.
 
-Install via Dalamud by adding `https://yfplugins.kinkop.eu/musical-guide/repository.json` as a custom repository.
+Install via Dalamud's plugin installer. Enable receiving testing versions under /xlsettings experimental to receive early access to testing versions.
