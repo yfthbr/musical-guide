@@ -32,4 +32,7 @@ public class S
 
     [PluginService]
     internal static IKeyState KeyState { get; private set; } = null!;
+
+    [PluginService]
+    internal static IGameConfig GameConfig { get; private set; } = null!;
 }

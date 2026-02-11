@@ -10,6 +10,7 @@ public class ConfigWindow : Window, IDisposable
 {
     private readonly Configuration configuration;
     private readonly CamController cam;
+    private readonly Vector4 warningColor = new Vector4(1.0f, 1.0f, 0.0f, 1.0f);
 
     // We give this window a constant ID using ###
     // This allows for labels being dynamic, like "{FPS Counter}fps###XYZ counter window",
@@ -66,6 +67,16 @@ public class ConfigWindow : Window, IDisposable
     {
         if (ImGui.CollapsingHeader("First Person Settings", ImGuiTreeNodeFlags.DefaultOpen))
         {
+            ImGui.Spacing();
+            if (S.GameConfig.UiConfig.TryGetUInt("FPSCameraInterpolationType", out var value)
+                && value == (uint)FPSCameraInterpolationType.Always)
+            {
+                using var color = ImRaii.PushColor(ImGuiCol.Text, warningColor);
+
+                ImGui.Text("Warning! You are using the \"Always\" setting for \"1st Person Camera Auto-adjustment\".");
+                ImGui.Text("This setting can cause additional nausea and makes you unable to control your view direction in first person.");
+                ImGui.Text("Recommended setting is either \"Never\" or \"Only when moving\" while using real first person.");
+            }
             ImGui.Spacing();
 
             var realFirstPerson = configuration.RealFirstPerson;
