@@ -65,7 +65,7 @@ public class CamController : IDisposable
         set { ((ExpandedCamera*)Cam)->Tilt = value; }
     }
 
-    internal static unsafe Camera* Cam => CameraManager.Instance()->GetActiveCamera();
+    internal static unsafe Camera* Cam => CameraManager.Instance()->Camera;
     public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson;
     private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
     #endregion
@@ -111,7 +111,6 @@ public class CamController : IDisposable
         unsafe
         {
             var camVTable = Marshal.ReadIntPtr((nint)Cam);
-            var CameraUpdateAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 3); // vf3 is CameraUpdate
             var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
 
             // TODO: find and hook whatever function checks Cam->DirH for movement purposes and flip DirH for its duration if DirV is inverted
@@ -234,9 +233,7 @@ public class CamController : IDisposable
 
     private unsafe bool PlayerDrawObjectExists()
     {
-        var player = S.ObjectTable.LocalPlayer;
-        if (player == null) return false;
-        var chara = (FFXIVClientStructs.FFXIV.Client.Game.Character.Character*)player.Address;
+        var chara = Control.GetLocalPlayer();
         if ((nint)chara == 0 || (nint)chara->DrawObject == 0) return false;
         return chara->DrawObject->IsVisible;
     }
@@ -306,7 +303,7 @@ public class CamController : IDisposable
 
         exitingFirstPerson = false;
 
-        var chara = (Character*)S.ObjectTable.LocalPlayer!.Address;
+        var chara = Control.GetLocalPlayer();
         var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)chara->DrawObject;
         if ((nint)charaBase == 0)
             return false;
