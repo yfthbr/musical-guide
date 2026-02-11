@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.6"></a>
+## 1.3.6 (2026-02-11)
+
+### Bug Fixes
+
+* take dalamud UI scale into account in config window sizing
+
 <a name="1.3.5"></a>
 ## 1.3.5 (2026-02-11)
 
