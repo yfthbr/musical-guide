@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.3.5"></a>
+## 1.3.5 (2026-02-11)
+
+### Bug Fixes
+
+* hook specific camera instead of active camera, access CS types directly (thanks Haselnussbomber)
+* limit slider widths and use helpmarkers for additional information
+
 <a name="1.3.4"></a>
 ## 1.3.4 (2026-02-11)
 
