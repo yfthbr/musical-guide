@@ -128,23 +128,13 @@ public class ConfigWindow : Window, IDisposable
 
             var removeRoll = configuration.RemoveRollInFirstPerson;
             var removeRollLabel = "Remove camera roll in first person";
-            if (reducedMotion)
+            if (ImGui.Checkbox(removeRollLabel, ref removeRoll))
             {
-                using (ImRaii.Disabled())
-                {
-                    ImGui.Checkbox(removeRollLabel, ref reducedMotion);
-                }
-            }
-            else
-            {
-                if (ImGui.Checkbox(removeRollLabel, ref removeRoll))
-                {
-                    configuration.RemoveRollInFirstPerson = removeRoll;
-                    configuration.Save();
-                }
+                configuration.RemoveRollInFirstPerson = removeRoll;
+                configuration.Save();
             }
             ImGui.SameLine();
-            ImGuiComponents.HelpMarker("Keeps your camera rotation on level with the horizon, which can help reduce motion sickness.");
+            ImGuiComponents.HelpMarker("Keeps your camera rotation on level with the horizon, which can help reduce motion sickness. Does not apply in reduced motion mode. May cause issues when the head is pointed directly up or down (for example, some sleeping positions.)");
 
             var reducedMotionInCombat = configuration.ReducedMotionInCombat;
             if (ImGui.Checkbox("Reduce motion in combat and instanced content", ref reducedMotionInCombat))
