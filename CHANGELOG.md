@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.4.0"></a>
+## 1.4.0 (2026-02-19)
+
+### Features
+
+* allow reverting to full motion in stationary emotes
+
+### Bug Fixes
+
+* track character rotation in reduced motion mode
+* unlock remove camera roll setting to reduce confusion now that full motion can be partially enabled in reduced motion mode
+
 <a name="1.3.6"></a>
 ## 1.3.6 (2026-02-11)
 
