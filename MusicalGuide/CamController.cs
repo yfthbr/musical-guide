@@ -80,6 +80,7 @@ public class CamController : IDisposable
     private volatile bool exitingFirstPerson = false;
     private float previousHeadPitch = 0f;
     private float previousFacing = 0f;
+    private float previousCharacterFacing = 0f;
     private float previousDirH = 0f;
     private float previousDirV = 0f;
     private float previousRealDirH = 0f;
@@ -373,6 +374,13 @@ public class CamController : IDisposable
                 previousFacing = boneYaw;
             }
 
+            if (reducedMotion)
+            {
+                diff = RotationalDifference(chara->Rotation, previousCharacterFacing);
+                if (!InputManager.IsRightMouseDown())
+                    dirH += diff;
+            }
+
             // Pitch affects camera DirV
             diff = RotationalDifference(bonePitch, previousHeadPitch);
             if (Math.Abs(diff) > EulerEpsilon)
@@ -471,6 +479,8 @@ public class CamController : IDisposable
         previousDirV = Cam->DirV;
         previousRealDirH = Cam->DirH;
         previousRealDirV = Cam->DirV;
+
+        previousCharacterFacing = chara->Rotation;
 
         return true;
     }
