@@ -10,6 +10,7 @@ using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Graphics;
 using FFXIVClientStructs.FFXIV.Common.Math;
+using Lumina.Excel.Sheets;
 
 namespace MusicalGuide;
 
@@ -68,6 +69,32 @@ public class CamController : IDisposable
     internal static unsafe Camera* Cam => CameraManager.Instance()->Camera;
     public static unsafe bool InFirstPerson => Cam->ZoomMode == CameraZoomMode.FirstPerson;
     private static bool IsMounted => S.Condition.Any(ConditionFlag.Mounted, ConditionFlag.RidingPillion);
+
+    private static unsafe bool IsPlayingStationaryEmote
+    {
+        get
+        {
+            try
+            {
+                if (S.DataManager.GetExcelSheet<Emote>() is not { } emotes)
+                    return false;
+
+                var emoteId = Control.GetLocalPlayer()->EmoteController.EmoteId;
+                if (!emotes.TryGetRow(emoteId, out var emote))
+                    return false;
+
+                // Category 1 = general, 2 = special
+                // Mode > 0 are various looping animations, all of which we are interested in
+                return emote.EmoteCategory.RowId is 1 or 2 || emote.EmoteMode.RowId != 0;
+            }
+            catch (Exception ex)
+            {
+                S.Log.Error($"Error determining emote state: {ex}");
+                return false;
+            }
+        }
+    }
+    private static bool IsEmoting => IsPlayingStationaryEmote || S.Condition.Any(ConditionFlag.Emoting, ConditionFlag.Crafting, ConditionFlag.Gathering, ConditionFlag.Fishing, ConditionFlag.Performing, ConditionFlag.PreparingToCraft, ConditionFlag.Unconscious);
     #endregion
 
     #region Volatile State
@@ -301,6 +328,8 @@ public class CamController : IDisposable
         }
 
         var reducedMotion = configuration.ReducedMotion || (configuration.ReducedMotionInCombat && S.Condition.Any(ConditionFlag.InCombat, ConditionFlag.BoundByDuty));
+        if (configuration.FullMotionInEmotes && IsEmoting)
+            reducedMotion = false;
 
         exitingFirstPerson = false;
 

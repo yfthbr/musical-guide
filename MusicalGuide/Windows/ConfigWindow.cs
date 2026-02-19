@@ -103,6 +103,29 @@ public class ConfigWindow : Window, IDisposable
             ImGui.SameLine();
             ImGuiComponents.HelpMarker("Disables rotating the camera automatically with head movement and allows the camera to rotate 360 degrees, which is recommended for regular gameplay to reduce motion sickness.");
 
+            using (ImRaii.PushIndent())
+            {
+                var fullMotionInEmotes = configuration.FullMotionInEmotes;
+                if (reducedMotion)
+                {
+                    if (ImGui.Checkbox("Allow full motion in emotes", ref fullMotionInEmotes))
+                    {
+                        configuration.FullMotionInEmotes = fullMotionInEmotes;
+                        configuration.Save();
+                    }
+                }
+                else
+                {
+                    using (ImRaii.Disabled())
+                    {
+                        var dummy = true;
+                        ImGui.Checkbox("Allow full motion in emotes", ref dummy);
+                    }
+                }
+                ImGui.SameLine();
+                ImGuiComponents.HelpMarker("Allows full head tracking in emotes and emote-like stationary activities (crafting, gathering, fishing). If disabled, the camera will not rotate with head movement even in emotes.");
+            }
+
             var removeRoll = configuration.RemoveRollInFirstPerson;
             var removeRollLabel = "Remove camera roll in first person";
             if (reducedMotion)

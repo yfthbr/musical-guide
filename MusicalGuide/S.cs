@@ -35,4 +35,7 @@ public class S
 
     [PluginService]
     internal static IGameConfig GameConfig { get; private set; } = null!;
+
+    [PluginService]
+    internal static IDataManager DataManager { get; private set; } = null!;
 }
