@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.5.0"></a>
+## 1.5.0 (2026-02-27)
+
+### Features
+
+* added option to track first person in gpose too
+
 <a name="1.4.0"></a>
 ## 1.4.0 (2026-02-19)
 
