@@ -19,6 +19,7 @@ public class Configuration : IPluginConfiguration
     public bool FullMotionInEmotes { get; set; } = true;
     public bool RemoveRollInFirstPerson { get; set; } = false;
     public bool ReducedMotionInCombat { get; set; } = true;
+    public bool AllowInGpose { get; set; } = false;
     public float FirstPersonHeadOffsetForward { get; set; } = 0.03f;
     public float FirstPersonHeadOffsetUpward { get; set; } = 0.0f;
     public float FirstPersonHeadOffsetSideward { get; set; } = 0.0f;

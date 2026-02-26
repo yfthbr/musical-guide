@@ -143,6 +143,13 @@ public class ConfigWindow : Window, IDisposable
                 configuration.Save();
             }
 
+            var allowInGpose = configuration.AllowInGpose;
+            if (ImGui.Checkbox("Allow first person tracking in Gpose", ref allowInGpose))
+            {
+                configuration.AllowInGpose = allowInGpose;
+                configuration.Save();
+            }
+
             ImGui.Spacing();
 
             using (ImRaii.PushIndent())

@@ -1,6 +1,7 @@
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 
 namespace MusicalGuide;
 
@@ -38,4 +39,7 @@ public class S
 
     [PluginService]
     internal static IDataManager DataManager { get; private set; } = null!;
+
+    [PluginService]
+    internal static ITargetManager TargetManager { get; private set; } = null!;
 }

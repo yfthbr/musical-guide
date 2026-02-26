@@ -259,16 +259,45 @@ public class CamController : IDisposable
         }
     }
 
-    private unsafe bool PlayerDrawObjectExists()
+    private unsafe bool DrawObjectExists(BattleChara* chara)
     {
-        var chara = Control.GetLocalPlayer();
         if ((nint)chara == 0 || (nint)chara->DrawObject == 0) return false;
         return chara->DrawObject->IsVisible;
     }
 
+    /// <summary>
+    /// Returns the character that the camera should attach to. Outside of Gpose this will always return the player character.
+    /// 
+    /// In Gpose we allow attaching the camera to the current posing target, which is usually the player's own character but can be any targetable player character in the scene.
+    /// </summary>
+    /// <returns>valid and visible BattleChara* or null</returns>
+    private unsafe BattleChara* GetTargetCharacter()
+    {
+        var chara = Control.GetLocalPlayer();
+        if (S.ClientState.IsGPosing)
+        {
+            if (!configuration.AllowInGpose)
+                return null;
+
+            if (S.TargetManager.GPoseTarget == null)
+                return null;
+
+            if (S.TargetManager.GPoseTarget.ObjectKind != Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Player)
+                return null;
+
+            chara = (BattleChara*)S.TargetManager.GPoseTarget.Address;
+        }
+
+        if (!DrawObjectExists(chara))
+            return null;
+
+        return chara;
+    }
+
     private unsafe bool TryOverrideCameraPosition()
     {
-        if (!PlayerDrawObjectExists())
+        var chara = GetTargetCharacter();
+        if (chara == null)
         {
             if (IsMounted && previousTickWasFirstPerson)
             {
@@ -280,9 +309,6 @@ public class CamController : IDisposable
             }
             return false;
         }
-
-        if (S.ClientState.IsGPosing)
-            return false;
 
         // Lock facing during transitions
         if (configuration.RealFirstPerson && ((ExpandedCamera*)Cam)->Transition > 0f)
@@ -333,7 +359,6 @@ public class CamController : IDisposable
 
         exitingFirstPerson = false;
 
-        var chara = Control.GetLocalPlayer();
         var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)chara->DrawObject;
         if ((nint)charaBase == 0)
             return false;
