@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.6.0"></a>
+## 1.6.0 (2026-04-15)
+
+### Features
+
+* added chat command to toggle gpose handling
+
 <a name="1.5.0"></a>
 ## 1.5.0 (2026-02-27)
 
