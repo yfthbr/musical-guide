@@ -59,12 +59,6 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
-    public void ToggleReducedMotion()
-    {
-        ReducedMotion = !ReducedMotion;
-        Save();
-    }
-
     public void ToggleGpose()
     {
         AllowInGpose = !AllowInGpose;
