@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.6.1"></a>
+## 1.6.1 (2026-04-15)
+
+### Bug Fixes
+
+* handle 1pp being disabled for /mguide gpose
+
 <a name="1.6.0"></a>
 ## 1.6.0 (2026-04-15)
 
