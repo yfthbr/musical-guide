@@ -47,6 +47,24 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    public void ToggleEnabled()
+    {
+        Enabled = !Enabled;
+        Save();
+    }
+
+    public void ToggleRealFirstPerson()
+    {
+        RealFirstPerson = !RealFirstPerson;
+        Save();
+    }
+
+    public void ToggleReducedMotion()
+    {
+        ReducedMotion = !ReducedMotion;
+        Save();
+    }
+
     public void ToggleGpose()
     {
         AllowInGpose = !AllowInGpose;

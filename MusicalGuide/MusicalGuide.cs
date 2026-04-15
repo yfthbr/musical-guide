@@ -106,23 +106,58 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
     private void OnCommand(string command, string args)
     {
+        args = args.Trim().ToLowerInvariant();
+
         if (args == "debug")
         {
             S.Framework.RunOnFrameworkThread(() => Debug.PrintDebug(Configuration));
             return;
         }
-        else if (args == "gpose")
-        {
-            Configuration.ToggleGpose();
-            S.ChatGui.Print($"Musical Guide: first person handling in Gpose {(Configuration.AllowInGpose ? "enabled" : "disabled")}.");
-            return;
-        }
-        else if (args == "help")
+
+        if (args == "help")
         {
             S.ChatGui.Print("Musical Guide commands:");
             S.ChatGui.Print("  /mguide - Open settings for Musical Guide");
+            S.ChatGui.Print("  /mguide toggle - Toggle Musical Guide on/off");
+            S.ChatGui.Print("  /mguide 1pp - Toggle real first person handling");
             S.ChatGui.Print("  /mguide gpose - Toggle first person handling in Gpose");
             S.ChatGui.Print("  /mguide help - Show this help message");
+            return;
+        }
+
+        if (args == "toggle")
+        {
+            Configuration.ToggleEnabled();
+            S.ChatGui.Print($"Musical Guide {(Configuration.Enabled ? "enabled" : "disabled")}.");
+            return;
+        }
+
+        if (args == "1pp")
+        {
+            if (!Configuration.Enabled)
+            {
+                S.ChatGui.Print("Musical Guide is disabled, enable it with /mguide toggle to use real first person handling.");
+                return;
+            }
+            Configuration.ToggleRealFirstPerson();
+            S.ChatGui.Print($"Musical Guide real first person handling {(Configuration.RealFirstPerson ? "enabled" : "disabled")}.");
+            return;
+        }
+
+        if (args == "gpose")
+        {
+            if (!Configuration.Enabled)
+            {
+                S.ChatGui.Print("Musical Guide is disabled, enable it with /mguide toggle to use first person handling in Gpose.");
+                return;
+            }
+            if (!Configuration.RealFirstPerson)
+            {
+                S.ChatGui.Print("Musical Guide: first person handling is disabled, enable it with /mguide 1pp to use it in Gpose.");
+                return;
+            }
+            Configuration.ToggleGpose();
+            S.ChatGui.Print($"Musical Guide: first person handling in Gpose {(Configuration.AllowInGpose ? "enabled" : "disabled")}.");
             return;
         }
         ToggleConfigUi();
