@@ -111,6 +111,20 @@ public sealed partial class MusicalGuide : IDalamudPlugin
             S.Framework.RunOnFrameworkThread(() => Debug.PrintDebug(Configuration));
             return;
         }
+        else if (args == "gpose")
+        {
+            Configuration.ToggleGpose();
+            S.ChatGui.Print($"Musical Guide: first person handling in Gpose {(Configuration.AllowInGpose ? "enabled" : "disabled")}.");
+            return;
+        }
+        else if (args == "help")
+        {
+            S.ChatGui.Print("Musical Guide commands:");
+            S.ChatGui.Print("  /mguide - Open settings for Musical Guide");
+            S.ChatGui.Print("  /mguide gpose - Toggle first person handling in Gpose");
+            S.ChatGui.Print("  /mguide help - Show this help message");
+            return;
+        }
         ToggleConfigUi();
     }
 

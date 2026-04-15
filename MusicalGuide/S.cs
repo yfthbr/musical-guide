@@ -42,4 +42,7 @@ public class S
 
     [PluginService]
     internal static ITargetManager TargetManager { get; private set; } = null!;
+
+    [PluginService]
+    internal static IChatGui ChatGui { get; private set; } = null!;
 }

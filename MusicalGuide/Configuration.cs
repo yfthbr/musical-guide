@@ -47,6 +47,12 @@ public class Configuration : IPluginConfiguration
         Save();
     }
 
+    public void ToggleGpose()
+    {
+        AllowInGpose = !AllowInGpose;
+        Save();
+    }
+
     // the below exist just to make saving less cumbersome
     public void Save()
     {
