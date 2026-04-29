@@ -139,7 +139,8 @@ public class CamController : IDisposable
         unsafe
         {
             var camVTable = Marshal.ReadIntPtr((nint)Cam);
-            var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 15); // vf15 is GetCameraPosition
+            var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 16); // vf16 is GetCameraPosition
+            S.Log.Debug($"GetCameraPosition at {GetCameraPositionAddress.ToString("X")}");
 
             // TODO: find and hook whatever function checks Cam->DirH for movement purposes and flip DirH for its duration if DirV is inverted
             // TODO: account for player movement occurring after camera position calculation (hide player based on velocity? predict?)
