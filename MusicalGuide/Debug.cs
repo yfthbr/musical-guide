@@ -7,13 +7,13 @@ namespace MusicalGuide;
 
 internal static unsafe class Debug
 {
+#if DEBUG
     private const int StructSize = 0x2C0;
     private static readonly byte[] PrevBytes = new byte[StructSize];
     private static readonly byte[] NewBytes = new byte[StructSize];
 
     public static void PrintDebug(Configuration configuration)
     {
-#if DEBUG
         // if (S.GameConfig.UiConfig.TryGetUInt("FPSCameraInterpolationType", out var value))
         // {
         //     S.Log.Info($"FPSCameraInterpolationType: {value}");
@@ -40,6 +40,10 @@ internal static unsafe class Debug
             // var changedFloats = changed.Where(o => o % 4 == 0).Select(o => (Offset: o, Value: System.BitConverter.ToSingle(NewBytes, o)));
             // S.Log.Info($"Cam changed at offsets:\n{string.Join("\n", changedFloats.Select(c => $"+{c.Offset:X} (float: {c.Value:F2})"))}");
         }
-#endif
     }
+#else
+    public static void PrintDebug(Configuration configuration)
+    {
+    }
+#endif
 }
