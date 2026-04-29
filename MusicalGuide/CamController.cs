@@ -283,7 +283,7 @@ public class CamController : IDisposable
             if (S.TargetManager.GPoseTarget == null)
                 return null;
 
-            if (S.TargetManager.GPoseTarget.ObjectKind != Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Player)
+            if (S.TargetManager.GPoseTarget.ObjectKind != Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Pc)
                 return null;
 
             chara = (BattleChara*)S.TargetManager.GPoseTarget.Address;
@@ -753,7 +753,7 @@ public class CamController : IDisposable
 
         try
         {
-            return S.ObjectTable.First(s => s.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.MountType).HitboxRadius;
+            return S.ObjectTable.First(s => s.ObjectKind == Dalamud.Game.ClientState.Objects.Enums.ObjectKind.Mount).HitboxRadius;
         }
         catch (InvalidOperationException)
         {
