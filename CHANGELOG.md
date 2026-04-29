@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.6.3"></a>
+## 1.6.3 (2026-04-30)
+
+### Bug Fixes
+
+* ObjectKind changes
+
 <a name="1.6.2"></a>
 ## 1.6.2 (2026-04-30)
 
