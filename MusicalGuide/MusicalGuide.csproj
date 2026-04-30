@@ -2,7 +2,6 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
     <PropertyGroup>
         <Version>1.6.3</Version>
-        <PackageProjectUrl>https://github.com/sidiousious/musical-guide</PackageProjectUrl>
         <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     </PropertyGroup>
 </Project>
