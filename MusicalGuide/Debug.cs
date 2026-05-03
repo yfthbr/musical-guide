@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Dalamud.Game.Config;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 
 namespace MusicalGuide;
 
@@ -14,13 +14,35 @@ internal static unsafe class Debug
 
     public static void PrintDebug(Configuration configuration)
     {
+        var charaBase = (FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CharacterBase*)((GameObject*)S.ObjectTable.LocalPlayer!.Address)->DrawObject;
+        if (charaBase == null)
+            return;
+
+        var skeleton = charaBase->Skeleton;
+        if (skeleton->PartialSkeletonCount < 2)
+            return;
+        for (var j = 0; j < skeleton->PartialSkeletonCount; j++)
+        {
+            var partialSkeleton = &skeleton->PartialSkeletons[j];
+            {
+                var havokPose = partialSkeleton->GetHavokPose(0);
+                if (havokPose == null)
+                    return;
+
+                for (var i = 0; i < havokPose->Skeleton->Bones.Length; i++)
+                {
+                    var bone = havokPose->Skeleton->Bones[i];
+                    S.Log.Info($"Skeleton {j} Bone {i}: {bone.Name.String}");
+                }
+            }
+        }
         // if (S.GameConfig.UiConfig.TryGetUInt("FPSCameraInterpolationType", out var value))
         // {
         //     S.Log.Info($"FPSCameraInterpolationType: {value}");
         // }
 
         var changed = new List<int>();
-        for (int offset = 0; offset < StructSize; offset++)
+        for (var offset = 0; offset < StructSize; offset++)
         {
             var b = Marshal.ReadByte((nint)CamController.Cam, offset);
             if (b != NewBytes[offset])
