@@ -48,7 +48,6 @@ public class CamController : IDisposable
 
     private const float StraightUp = 90 * DegreesToRadians;
     private const float StraightDown = -90 * DegreesToRadians;
-    private const float DirVSmoothingThreshold = 90 * DegreesToRadians;
 
     private const int HeadSkeletonIndex = 1;
     #endregion
@@ -127,8 +126,9 @@ public class CamController : IDisposable
     // Hook delegates
     // Verify at: 48 8B C4 44 88 48 ?? 55 56
     private unsafe delegate void GetCameraPositionDelegate(Camera* camera, GameObject* target, Vector3* position, byte swapPerson);
-    private readonly Hook<GetCameraPositionDelegate>? getCameraPositionHook;
-    private readonly Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
+
+    private Hook<GetCameraPositionDelegate>? getCameraPositionHook;
+    private Hook<CameraBase.Delegates.ShouldDrawGameObject>? shouldDrawGameObjectHook;
 
     public CamController(Configuration configuration)
     {
@@ -136,25 +136,30 @@ public class CamController : IDisposable
 
         configuration.OnConfigurationChanged += OnConfigurationChanged;
 
-        unsafe
-        {
-            var camVTable = Marshal.ReadIntPtr((nint)Cam);
-            var GetCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 16); // vf16 is GetCameraPosition
-            S.Log.Debug($"GetCameraPosition at {GetCameraPositionAddress.ToString("X")}");
-
-            // TODO: find and hook whatever function checks Cam->DirH for movement purposes and flip DirH for its duration if DirV is inverted
-            // TODO: account for player movement occurring after camera position calculation (hide player based on velocity? predict?)
-
-            getCameraPositionHook = S.Interop.HookFromAddress<GetCameraPositionDelegate>(GetCameraPositionAddress, GetCameraPositionDetour);
-            shouldDrawGameObjectHook = S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
-
-            getCameraPositionHook.Enable();
-            shouldDrawGameObjectHook.Enable();
-
-            S.Log.Debug($"Current camera limits: Min={Cam->DirVMin}, Max={Cam->DirVMax}, FoV={Cam->FoV}");
-        }
+        InitializeHooks();
 
         S.Framework.Update += FrameworkOnUpdateEvent;
+    }
+
+    private unsafe void InitializeHooks()
+    {
+        var camVTable = Marshal.ReadIntPtr((nint)Cam);
+        var getCameraPositionAddress = Marshal.ReadIntPtr(camVTable, IntPtr.Size * 16); // vf16 is GetCameraPosition
+        S.Log.Debug($"GetCameraPosition at {getCameraPositionAddress.ToString("X")}");
+
+        // TODO: find and hook whatever function checks Cam->DirH for movement purposes and flip DirH for its duration if DirV is inverted
+        // TODO: account for player movement occurring after camera position calculation (hide player based on velocity? predict?)
+
+        getCameraPositionHook =
+            S.Interop.HookFromAddress<GetCameraPositionDelegate>(getCameraPositionAddress, GetCameraPositionDetour);
+        shouldDrawGameObjectHook =
+            S.Interop.HookFromAddress<CameraBase.Delegates.ShouldDrawGameObject>(
+                CameraBase.MemberFunctionPointers.ShouldDrawGameObject, ShouldDrawGameObjectDetour);
+
+        getCameraPositionHook.Enable();
+        shouldDrawGameObjectHook.Enable();
+
+        S.Log.Debug($"Current camera limits: Min={Cam->DirVMin}, Max={Cam->DirVMax}, FoV={Cam->FoV}");
     }
 
     private void FrameworkOnUpdateEvent(IFramework framework)
@@ -171,12 +176,23 @@ public class CamController : IDisposable
         shouldAdjustDistance = true;
     }
 
-    public void Dispose()
+    internal void ReHook()
     {
-        getCameraPositionHook?.Disable();
-        shouldDrawGameObjectHook?.Disable();
+        DisposeHooks();
+        InitializeHooks();
+    }
+
+    private void DisposeHooks()
+    {
         getCameraPositionHook?.Dispose();
         shouldDrawGameObjectHook?.Dispose();
+        getCameraPositionHook = null;
+        shouldDrawGameObjectHook = null;
+    }
+
+    public void Dispose()
+    {
+        DisposeHooks();
 
         S.Framework.Update -= FrameworkOnUpdateEvent;
 
@@ -342,12 +358,9 @@ public class CamController : IDisposable
             if (exitingFirstPerson || previousTickWasFirstPerson)
             {
                 S.Log.Debug("Exited real first person mode, resetting camera vertical limits.");
-                unsafe
-                {
-                    RestoreDirVRestrictions();
-                    Cam->FoV = DefaultFoV;
-                    CameraRoll = 0;
-                }
+                RestoreDirVRestrictions();
+                Cam->FoV = DefaultFoV;
+                CameraRoll = 0;
                 exitingFirstPerson = false;
             }
             previousTickWasFirstPerson = false;
@@ -402,7 +415,7 @@ public class CamController : IDisposable
         var fixAxes = Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, MathF.PI / 2f) * Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, MathF.PI);
         var correctedBoneRot = boneWorldRotation * fixAxes;
 
-        var (boneYaw, bonePitch, boneRoll, flippedByBone) = GetYawPitchRoll(correctedBoneRot);
+        var (boneYaw, bonePitch, _, _) = GetYawPitchRoll(correctedBoneRot);
 
         // // Apply configured offsets to virtual bone position
         var offset = Vector3.Transform(configuration.FirstPersonOffset, correctedBoneRot);
@@ -475,7 +488,6 @@ public class CamController : IDisposable
         var distanceToSingularity = Math.Min(Math.Abs(dirV - StraightUp), Math.Abs(dirV - StraightDown));
         if (distanceToSingularity <= DirVEpsilon)
         {
-            var before = dirV;
             if (previousDirV < dirV)
                 dirV += DirVEpsilon * 2;
             else if (previousDirV > dirV)

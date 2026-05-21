@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Linq;
 using System.Reflection;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Command;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -36,6 +38,7 @@ public sealed partial class MusicalGuide : IDalamudPlugin
 
         S.PluginInterface.UiBuilder.Draw += DrawUi;
         S.PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
+        S.PluginInterface.ActivePluginsChanged += OnPluginsChanged;
 
         S.Framework.Update += FrameworkOnUpdateEvent;
 
@@ -56,12 +59,32 @@ public sealed partial class MusicalGuide : IDalamudPlugin
         Cam.Dispose();
 
         S.Framework.Update -= FrameworkOnUpdateEvent;
+        S.PluginInterface.ActivePluginsChanged -= OnPluginsChanged;
 
         WindowSystem.RemoveAllWindows();
 
         ConfigWindow.Dispose();
 
         S.CommandManager.RemoveHandler(CommandName);
+    }
+
+    private void OnPluginsChanged(IActivePluginsChangedEventArgs e)
+    {
+        if (e.AffectedInternalNames.Contains("Cammy") && e.Kind == PluginListInvalidationKind.Loaded)
+        {
+            S.Framework.RunOnTick(() =>
+            {
+                S.Log.Info("Rehooking due to conflicting plugin load.");
+                S.Notifications.AddNotification(new Notification()
+                {
+                    Title = "Compatibility Notice",
+                    Content =
+                        "Cammy was loaded after Musical Guide. Loading Cammy after Musical Guide breaks the real first person mode. An automatic fix has been attempted, but you may need to reload Musical Guide yourself, or disable Cammy.",
+                    InitialDuration = TimeSpan.MaxValue
+                });
+                Cam.ReHook();
+            }, TimeSpan.FromTicks(1));
+        }
     }
 
     private void FrameworkOnUpdateEvent(IFramework framework)

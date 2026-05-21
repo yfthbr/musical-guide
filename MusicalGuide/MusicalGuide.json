@@ -6,5 +6,6 @@
     "RepoUrl": "https://github.com/Sidiousious/musical-guide",
     "Tags": ["Camera"],
     "IconUrl": "https://yfplugins.kinkop.eu/musical-guide.png",
-    "Punchline": "Enhanced camera distance control and first-person experience."
+    "Punchline": "Enhanced camera distance control and first-person experience.",
+    "LoadPriority": -1
 }

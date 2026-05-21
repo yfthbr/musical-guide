@@ -1,7 +1,6 @@
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.Game.Character;
 
 namespace MusicalGuide;
 
@@ -45,4 +44,7 @@ public class S
 
     [PluginService]
     internal static IChatGui ChatGui { get; private set; } = null!;
+
+    [PluginService]
+    internal static INotificationManager Notifications { get; private set; } = null!;
 }
