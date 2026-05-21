@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [versionize](https://github.com/versionize/versionize) for commit guidelines.
 
+<a name="1.6.4"></a>
+## 1.6.4 (2026-05-21)
+
+### Bug Fixes
+
+* Cammy compatibility checks
+* ensure debug allocations only in debug builds
+
 <a name="1.6.3"></a>
 ## 1.6.3 (2026-04-30)
 
